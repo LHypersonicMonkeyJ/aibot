@@ -90,11 +90,12 @@ Use **ESP-IDF with C++ and FreeRTOS**, rather than Arduino. ESP-IDF gives greate
 Repository structure:
 
 ```
-robot/
+aibot/
 │
 ├── firmware/
 │   ├── CMakeLists.txt
 │   ├── sdkconfig.defaults
+│   ├── tools/              # host-side bring-up scripts (serial console)
 │   │
 │   ├── main/
 │   │   ├── main.cpp
@@ -143,6 +144,10 @@ robot/
 │   └── communication/
 │       ├── serial_interface.py
 │       └── websocket_server.py
+│
+├── sim/                    # software-only actuator simulator (section 7)
+│   ├── robot_sim/
+│   └── tests/
 │
 ├── tests/
 │   ├── test_motion.py

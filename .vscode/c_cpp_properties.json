@@ -1,0 +1,11 @@
+{
+    "configurations": [
+        {
+            "name": "ESP-IDF",
+            "compileCommands": "${workspaceFolder}/firmware/build/compile_commands.json",
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++23"
+        }
+    ],
+    "version": 4
+}
