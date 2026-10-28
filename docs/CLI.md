@@ -31,7 +31,7 @@ Every command gets exactly one reply line, shown as `[type] {fields}`. An `ack` 
 
 ```
 expr happy
-[ack] {"cmd": "expr", "name": "happy", "frame_us": 25805}
+[ack] {"cmd": "expr", "name": "happy"}
 expr hapy
 [error] {"msg": "usage: expr <neutral|happy|sad|angry|surprised|sleepy|listening|thinking>"}
 ```
@@ -52,38 +52,52 @@ Under the hood the robot sends one JSON object per line. Commands are plain text
 | Command       | What it does                                                               | Reply                                                             |
 | ------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `ping`      | Checks the board is alive                                                  | `[pong] {"uptime_ms": …}`                                      |
-| `status`    | Prints one telemetry line now                                              | `[telemetry] up 61.3s  heap …  internal …  psram …  tasks 6` |
+| `status`    | Prints one telemetry line now                                              | `[telemetry] up 61.3s  heap …  internal …  psram …  tasks 7  fps 30 (drawn 2)  frame 14.8ms` |
 | `rate <ms>` | Sets the telemetry period, 100 to 60000 ms. Back to 1000 ms after a reboot | `[ack] {"cmd": "rate", "period_ms": …}`                        |
 | `reboot`    | Restarts the board                                                         | `[ack] {"cmd": "reboot"}`, then a `boot` line                 |
 
-Telemetry fields: uptime, free heap, lowest free heap since boot, free internal RAM, free PSRAM, and task count.
+Telemetry fields: uptime, free heap, lowest free heap since boot, free internal RAM, free PSRAM, task count, and the display: `fps` is the animation rate (30), `drawn` is how many frames were actually redrawn (low while the face is still, up to 30 during blinks and moves), and `frame` is the time to draw one frame (about 15 ms at 80 MHz SPI).
 
 ## Face and display commands
 
-The board shows the neutral face at boot. Faces are static for now; blinking, eye movement and smooth changes come with the M2 display task.
+The board shows the neutral face (two eyes and a mouth) at boot and animates it at 30 fps: it blinks every 2 to 6 seconds (sometimes twice), glances around every 1 to 4 seconds, and blends into a new expression over about 200 ms.
 
 ### Expressions: `expr <name>`
 
-| Command            | Look                                  |
-| ------------------ | ------------------------------------- |
-| `expr neutral`   | Rounded rectangles, the boot face     |
-| `expr happy`     | Upward crescents                      |
-| `expr sad`       | Lids droop toward the outer corners   |
-| `expr angry`     | Lids slant down toward the center     |
-| `expr surprised` | Bigger, rounder eyes                  |
-| `expr sleepy`    | Half-closed, flat top                 |
-| `expr listening` | Slightly larger and raised            |
-| `expr thinking`  | One eye squints, looking up and right |
-| `expr`           | Lists the names                       |
+| Command | Eyes | Mouth |
+| --- | --- | --- |
+| `expr neutral` | Rounded rectangles, the boot face | Small, slightly upturned line |
+| `expr happy` | Upward crescents | Wide smile |
+| `expr sad` | Lids droop toward the outer corners | Frown |
+| `expr angry` | Lids slant down toward the center | Slight frown, thicker |
+| `expr surprised` | Bigger, rounder eyes | Small round "o" |
+| `expr sleepy` | Half-closed, flat top | Tiny flat line |
+| `expr listening` | Slightly larger and raised | Small, slightly open |
+| `expr thinking` | One eye squints, looking up and right | Small frown, off to one side |
+| `expr` | Lists the names | |
 
-Reply: `[ack] {"cmd": "expr", "name": "happy", "frame_us": 25805}`. `frame_us` is the time to draw one frame, about 26 ms.
+Reply: `[ack] {"cmd": "expr", "name": "happy"}`.
+
+### Eyes and animation
+
+| Command | What it does | Reply |
+| --- | --- | --- |
+| `look <x> <y>` | Points the eyes. x is -1 (left) to 1 (right), y is -1 (up) to 1 (down). Stops idle eye movement | `[ack] {"cmd": "look", "x": 0.80, "y": -0.50, "auto": false}` |
+| `blink` | Blinks once now | `[ack] {"cmd": "blink"}` |
+| `eyes auto on` | Turns idle blinking and eye movement back on, e.g. after `look` | `[ack] {"cmd": "eyes", "auto": true}` |
+| `eyes auto off` | Holds the eyes still: no random blinks or glances. `blink` and `look` still work | `[ack] {"cmd": "eyes", "auto": false}` |
+| `eyes` | Shows whether idle animation is on | `[ack] {"cmd": "eyes", "auto": …}` |
+| `talk on` | Flaps the mouth in random syllables, as if speaking. A stand-in until real speech drives it | `[ack] {"cmd": "talk", "on": true}` |
+| `talk off` | Stops after the current syllable | `[ack] {"cmd": "talk", "on": false}` |
+
+Idle animation is on at every boot.
 
 ### Screen controls
 
 | Command                    | What it does                                                                                                |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `bright <0-100>`         | Sets backlight brightness in %. `bright` alone shows it. Boot default is 80                               |
-| `lcdtest [image]`        | Test image: `pattern` (default), or solid `red`, `green`, `blue`, `white`, `black`              |
+| `lcdtest [image]`        | Test image: `pattern` (default), or solid `red`, `green`, `blue`, `white`, `black`. Pauses the face until the next `expr`, `look`, `blink` or `eyes` command |
 | `lcdcfg`                 | Shows the orientation and color settings                                                                    |
 | `lcdcfg <setting> <0\|1>` | Changes `invert`, `mirror_x`, `mirror_y` or `swap_rb`, then redraws the pattern. Lasts until reboot |
 

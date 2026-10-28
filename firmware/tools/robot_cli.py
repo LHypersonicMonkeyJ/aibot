@@ -36,6 +36,8 @@ def format_msg(msg: dict) -> str:
             f"heap {msg['free_heap']} (min {msg['min_free_heap']})  "
             f"internal {msg['free_internal']}  psram {msg['free_psram']}  "
             f"tasks {msg['tasks']}"
+            + (f"  fps {msg['fps']} (drawn {msg['drawn_fps']})  frame {msg['frame_us'] / 1000:.1f}ms"
+               if "fps" in msg else "")
         )
     fields = {k: v for k, v in msg.items() if k != "type"}
     return f"[{msg['type']}] {json.dumps(fields)}"

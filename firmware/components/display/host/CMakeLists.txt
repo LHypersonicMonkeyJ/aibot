@@ -6,13 +6,13 @@
 #   firmware/build-host/face_preview previews/
 cmake_minimum_required(VERSION 3.16)
 project(face_host CXX)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_library(face STATIC ../face.cpp)
+add_library(face STATIC ../face.cpp ../animator.cpp)
 target_include_directories(face PUBLIC ../include)
 target_compile_options(face PRIVATE -Wall -Wextra -Werror)
 
@@ -22,5 +22,9 @@ target_link_libraries(face_preview face)
 add_executable(face_test face_test.cpp)
 target_link_libraries(face_test face)
 
+add_executable(animator_test animator_test.cpp)
+target_link_libraries(animator_test face)
+
 enable_testing()
 add_test(NAME face_test COMMAND face_test)
+add_test(NAME animator_test COMMAND animator_test)

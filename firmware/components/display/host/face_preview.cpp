@@ -4,13 +4,16 @@
 //   face_preview <out_dir>
 //
 // Writes <name>.png per expression, sheet.png (all expressions in a grid, in
-// kExpressions order), blink.png and transition.png (neutral -> each
-// expression, left to right).
+// kExpressions order), sheet_eyes_only.png (the same without a mouth),
+// talking.png (the mouth opening and closing), blink.png, gaze.png, transition.png (neutral -> angry)
+// and animation.png (6 s of the animator, one frame per 100 ms, switching to
+// happy at 3 s).
 
 #include <cstdio>
 #include <string>
 #include <vector>
 
+#include "animator.hpp"
 #include "face.hpp"
 #include "png.hpp"
 
@@ -77,6 +80,19 @@ int main(int argc, char** argv) {
     }
     ok &= sheet(dir + "sheet.png", all, 4);
 
+    // The same expressions without a mouth, for comparison.
+    std::vector<face::Face> eyes_only = all;
+    for (auto& f : eyes_only) f.mouth.width = 0;
+    ok &= sheet(dir + "sheet_eyes_only.png", eyes_only, 4);
+
+    std::vector<face::Face> talking;
+    for (float o : {0.0f, 0.3f, 0.7f, 1.0f, 0.5f, 0.15f}) {
+        face::Face f = face::kExpressions[0].face;
+        f.mouth.open = o;
+        talking.push_back(f);
+    }
+    ok &= sheet(dir + "talking.png", talking, 6);
+
     std::vector<face::Face> blink;
     for (float b : {1.0f, 0.6f, 0.25f, 0.0f, 0.4f, 1.0f}) {
         face::Face f = face::kExpressions[0].face;
@@ -99,6 +115,15 @@ int main(int argc, char** argv) {
     const face::Face* to = face::find_expression("angry", 5);
     for (float t : {0.0f, 0.25f, 0.5f, 0.75f, 1.0f}) trans.push_back(face::lerp(*from, *to, t));
     ok &= sheet(dir + "transition.png", trans, 5);
+
+    face::Animator anim(42);
+    std::vector<face::Face> frames;
+    for (int ms = 0; ms < 6000; ms += 10) {
+        if (ms == 3000) anim.set_expression(*face::find_expression("happy", 5));
+        const face::Face f = anim.update(10);
+        if (ms % 100 == 0) frames.push_back(f);
+    }
+    ok &= sheet(dir + "animation.png", frames, 10);
 
     return ok ? 0 : 1;
 }

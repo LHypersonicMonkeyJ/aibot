@@ -27,9 +27,10 @@ menu "aibot display"
     config AIBOT_LCD_SPI_MHZ
         int "SPI clock (MHz)"
         range 1 80
-        default 40
+        default 80
         help
-            40 MHz is safe over jumper wires. 80 MHz needs short, clean wiring.
+            80 MHz (about 15 ms per frame) is clean on the bench jumpers. Drop
+            to 40 MHz (about 26 ms) if the image shows specks or streaks.
 
     config AIBOT_LCD_INVERT
         bool "Invert colors"

@@ -25,18 +25,20 @@ constexpr uint32_t kMaxPeriodMs = 60000;
 // Task priorities, highest first. Motion and audio will sit above these.
 constexpr int kCommPriority = 5;
 constexpr int kTelemetryPriority = 2;
+constexpr int kDisplayPriority = 1;
 
 std::atomic<uint32_t> g_telemetry_period_ms{1000};
 
 int64_t uptime_ms() { return esp_timer_get_time() / 1000; }
 
 void send_telemetry() {
+    const DisplayStats d = display_stats();
     comm::sendf(
         "{\"type\":\"telemetry\",\"uptime_ms\":%" PRId64 ",\"free_heap\":%" PRIu32
-        ",\"min_free_heap\":%" PRIu32 ",\"free_internal\":%zu,\"free_psram\":%zu,\"tasks\":%u}",
+        ",\"min_free_heap\":%" PRIu32 ",\"free_internal\":%zu,\"free_psram\":%zu,\"tasks\":%u,\"fps\":%" PRIu32 ",\"drawn_fps\":%" PRIu32 ",\"frame_us\":%" PRIu32 "}",
         uptime_ms(), esp_get_free_heap_size(), esp_get_minimum_free_heap_size(),
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
-        static_cast<unsigned>(uxTaskGetNumberOfTasks()));
+        static_cast<unsigned>(uxTaskGetNumberOfTasks()), d.fps, d.drawn_fps, d.frame_us);
 }
 
 void telemetry_task(void*) {
@@ -94,6 +96,7 @@ extern "C" void app_main() {
                 servo_ready() ? "true" : "false", display_ready() ? "true" : "false");
 
     comm::serial_start(kCommPriority);
+    display_start(kDisplayPriority);
     xTaskCreate(telemetry_task, "telemetry", 4096, nullptr, kTelemetryPriority, nullptr);
 
     ESP_LOGI(TAG, "M1 bring-up running");
