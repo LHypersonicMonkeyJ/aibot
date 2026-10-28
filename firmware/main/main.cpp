@@ -12,6 +12,8 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "audio.hpp"
+#include "audio_commands.hpp"
 #include "display_commands.hpp"
 #include "serial_protocol.hpp"
 #include "servo_commands.hpp"
@@ -22,7 +24,8 @@ constexpr const char* TAG = "main";
 constexpr uint32_t kMinPeriodMs = 100;
 constexpr uint32_t kMaxPeriodMs = 60000;
 
-// Task priorities, highest first. Motion and audio will sit above these.
+// Task priorities, highest first. Motion will sit above these.
+constexpr int kAudioPriority = 8;
 constexpr int kCommPriority = 5;
 constexpr int kTelemetryPriority = 2;
 constexpr int kDisplayPriority = 1;
@@ -35,10 +38,11 @@ void send_telemetry() {
     const DisplayStats d = display_stats();
     comm::sendf(
         "{\"type\":\"telemetry\",\"uptime_ms\":%" PRId64 ",\"free_heap\":%" PRIu32
-        ",\"min_free_heap\":%" PRIu32 ",\"free_internal\":%zu,\"free_psram\":%zu,\"tasks\":%u,\"fps\":%" PRIu32 ",\"drawn_fps\":%" PRIu32 ",\"frame_us\":%" PRIu32 "}",
+        ",\"min_free_heap\":%" PRIu32 ",\"free_internal\":%zu,\"free_psram\":%zu,\"tasks\":%u,\"fps\":%" PRIu32 ",\"drawn_fps\":%" PRIu32 ",\"frame_us\":%" PRIu32 ",\"audio_ms\":%u,\"dropouts\":%" PRIu32 "}",
         uptime_ms(), esp_get_free_heap_size(), esp_get_minimum_free_heap_size(),
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
-        static_cast<unsigned>(uxTaskGetNumberOfTasks()), d.fps, d.drawn_fps, d.frame_us);
+        static_cast<unsigned>(uxTaskGetNumberOfTasks()), d.fps, d.drawn_fps, d.frame_us,
+        static_cast<unsigned>(audio::buffered() * 1000 / audio::kSampleRate), audio::dropouts());
 }
 
 void telemetry_task(void*) {
@@ -87,15 +91,19 @@ extern "C" void app_main() {
     comm::register_command("reboot", cmd_reboot);
     register_servo_commands();
     register_display_commands();
+    register_audio_commands();
 
     servo_init();
     display_init();
+    audio_init();
 
-    comm::sendf("{\"type\":\"boot\",\"reset_reason\":%d,\"idf\":\"%s\",\"pca9685\":%s,\"lcd\":%s}",
+    comm::sendf("{\"type\":\"boot\",\"reset_reason\":%d,\"idf\":\"%s\",\"pca9685\":%s,\"lcd\":%s,\"audio\":%s}",
                 static_cast<int>(esp_reset_reason()), esp_get_idf_version(),
-                servo_ready() ? "true" : "false", display_ready() ? "true" : "false");
+                servo_ready() ? "true" : "false", display_ready() ? "true" : "false",
+                audio_ready() ? "true" : "false");
 
     comm::serial_start(kCommPriority);
+    audio_start(kAudioPriority);
     display_start(kDisplayPriority);
     xTaskCreate(telemetry_task, "telemetry", 4096, nullptr, kTelemetryPriority, nullptr);
 

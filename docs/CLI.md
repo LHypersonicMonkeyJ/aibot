@@ -4,6 +4,8 @@
 
 ## Getting started
 
+The robot talks at 921600 baud since M3; the CLI uses that by default.
+
 Run the CLI from `firmware/`, type a command at the prompt and press Enter. It prints only the robot's replies.
 
 ```bash
@@ -19,7 +21,7 @@ python3 tools/robot_cli.py /dev/ttyACM0
 | Option          | Default  | What it does                         |
 | --------------- | -------- | ------------------------------------ |
 | `port`        | required | Serial device, e.g. `/dev/ttyACM0` |
-| `--baud`      | 115200   | Serial speed                         |
+| `--baud`      | 921600   | Serial speed                         |
 | `--logs`      | off      | Show ESP_LOG lines from the firmware |
 | `--telemetry` | off      | Show the periodic telemetry stream   |
 
@@ -42,7 +44,7 @@ expr hapy
 | `error`     | Bad arguments, unknown command, or hardware not ready                                                        |
 | `pong`      | Reply to `ping`                                                                                            |
 | `telemetry` | Reply to `status`, or every second with `--telemetry`                                                    |
-| `boot`      | The board just started: `reset_reason`, `idf` version, and whether the `pca9685` and `lcd` are ready |
+| `boot`      | The board just started: `reset_reason`, `idf` version, and whether the `pca9685`, `lcd` and `audio` are ready |
 | `i2cscan`   | Reply to `i2cscan`                                                                                         |
 
 Under the hood the robot sends one JSON object per line. Commands are plain text, one per line.
@@ -52,11 +54,11 @@ Under the hood the robot sends one JSON object per line. Commands are plain text
 | Command       | What it does                                                               | Reply                                                             |
 | ------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `ping`      | Checks the board is alive                                                  | `[pong] {"uptime_ms": …}`                                      |
-| `status`    | Prints one telemetry line now                                              | `[telemetry] up 61.3s  heap …  internal …  psram …  tasks 7  fps 30 (drawn 2)  frame 14.8ms` |
+| `status`    | Prints one telemetry line now                                              | `[telemetry] up 61.3s  heap …  internal …  psram …  tasks 8  fps 30 (drawn 2)  frame 14.8ms  audio 0ms  dropouts 0` |
 | `rate <ms>` | Sets the telemetry period, 100 to 60000 ms. Back to 1000 ms after a reboot | `[ack] {"cmd": "rate", "period_ms": …}`                        |
 | `reboot`    | Restarts the board                                                         | `[ack] {"cmd": "reboot"}`, then a `boot` line                 |
 
-Telemetry fields: uptime, free heap, lowest free heap since boot, free internal RAM, free PSRAM, task count, and the display: `fps` is the animation rate (30), `drawn` is how many frames were actually redrawn (low while the face is still, up to 30 during blinks and moves), and `frame` is the time to draw one frame (about 15 ms at 80 MHz SPI).
+Telemetry fields: uptime, free heap, lowest free heap since boot, free internal RAM, free PSRAM, task count, and the display: `fps` is the animation rate (30), `drawn` is how many frames were actually redrawn (low while the face is still, up to 30 during blinks and moves), and `frame` is the time to draw one frame (about 15 ms at 80 MHz SPI). `audio` is how much sound is queued, and `dropouts` counts the times audio ran out mid-stream since boot (should stay 0).
 
 ## Face and display commands
 
@@ -103,6 +105,27 @@ Idle animation is on at every boot.
 
 The test pattern should show a red dot at the top, green on the right, blue at the bottom, a white dot in the center and a white ring at the edge, on black. Permanent orientation and color changes go in `idf.py menuconfig` under *aibot display*.
 
+## Sound commands
+
+| Command | What it does | Reply |
+| --- | --- | --- |
+| `beep` | Plays an 880 Hz tone for 300 ms | `[ack] {"cmd": "beep", "hz": 880, "ms": 300}` |
+| `beep <hz> <ms>` | Plays a tone, 50 to 8000 Hz, 10 to 2000 ms | same |
+| `vol <0-100>` | Sets the speaker volume in %. `vol` alone shows it. Boot default is 60 | `[ack] {"cmd": "vol", "percent": 60}` |
+| `pcm …` | Used by `say.py` to stream audio. Not meant for typing | `[pcm] {"buffered": …, "capacity": 32768, "dropped": 0}` |
+
+### Speech from the PC: `say.py`
+
+Close the CLI first, then:
+
+```bash
+python3 tools/say.py /dev/ttyACM0 "Hello, I'm aibot."
+python3 tools/say.py /dev/ttyACM0 --wav clip.wav        # play a 16-bit WAV file
+python3 tools/say.py /dev/ttyACM0 "Hi" --save hi.wav    # also keep the audio that was sent
+```
+
+It makes the speech on the PC with Piper (voice `en_US-lessac-medium`, downloaded to `tools/voices/` on first use, about 60 MB), streams it at 16 kHz, and the mouth moves with the sound. It ends with a line like `played 2.9 s in 3.1 s, robot dropouts since boot: 0`.
+
 ## Servo commands (M7, not yet tested)
 
 These work once a PCA9685 is wired up. Without one, every command except `i2cscan` replies `pca9685 not found, check wiring and run i2cscan`.
@@ -132,3 +155,7 @@ A joint can be given by name or index: `servo head_yaw 30` and `servo 1 30` do t
 | Screen dark, faint glow, or blank              | Poor ground, or a separate supply without a shared ground | Check GND is firmly connected. Any separate LCD supply must share ground with the ESP32. Then check BL (GPIO 21) and VCC |
 | Backlight on but no image                        | SPI data wiring                    | Check DIN (GPIO 11), CLK (12), CS (10), DC (13)                                     |
 | Wrong colors or position                         | Panel settings                     | Run `lcdtest`, adjust with `lcdcfg` (see Face and display commands)             |
+| Nothing but garbage from the CLI                 | Wrong baud rate                    | The robot uses 921600 since M3. Update the firmware, or pass `--baud 115200` to talk to old firmware |
+| `beep` is silent                                 | Amp wiring or volume               | Check BCLK (GPIO 4), LRC (5), DIN (6), VIN on 5V, and the speaker on the amp's + / − terminals. Try `vol 80` |
+| Speech has gaps, or `dropouts` goes up           | The PC couldn't keep up            | Close other programs using the port or CPU and retry. `say.py` reports dropouts at the end |
+| Board resets on loud sounds                      | Speaker drawing too much power     | Lower `vol`, or power the amp from a separate 5 V supply that shares GND with the ESP32 |

@@ -215,7 +215,7 @@ This is the same fundamental separation used in larger robotic control systems.
 |---|---|---|---|
 | M1 | ESP32 development environment | Flash firmware and read serial logs | ✅ Done. ESP-IDF v6.1 installed; firmware boots, streams telemetry and answers commands on the board |
 | M2 | LCD interface | Animated eyes and expressions | ✅ Done. Animated face (eyes and mouth) at 30 fps: blinks, idle glances, eased expression changes, test talking mouth; `expr`/`look`/`blink`/`eyes`/`talk` commands. 80 MHz SPI, 15 ms/frame |
-| M3 | Audio output | Play synthesized speech | ⬜ Not started |
+| M3 | Audio output | Play synthesized speech | 🟡 Firmware and `say.py` done and tested without a speaker (speech streams in real time, 0 dropouts). Waiting on MAX98357A + speaker wiring to hear it |
 | M4 | Audio input | Record microphone audio | ⬜ Not started |
 | M5 | Python communication | Send commands and receive telemetry | 🟡 Serial protocol v0 and `firmware/tools/robot_cli.py` working; backend not started |
 | M6 | Initial AI integration | Hold a conversation with coordinated expressions | ⬜ Not started |
@@ -227,7 +227,7 @@ This is the same fundamental separation used in larger robotic control systems.
 
 **Next steps**
 
-1. Start M3: audio output through the MAX98357A amplifier.
+1. Finish M3: wire the MAX98357A and speaker (wiring below), then run the M3 checks.
 2. Decide on 240 MHz CPU, and on 16 MB flash (the chip reports 16 MB).
 3. For M7 later: wire the PCA9685 and servos (see `firmware/README.md`), check `i2cscan` finds the board, then command each servo.
 
@@ -277,6 +277,52 @@ GPIO 10–12 are the native SPI pins, so the bus can run at 80 MHz. These pins a
 - Animation holds a steady 30 fps and blinks look natural.
 - Python can switch expressions and gaze over serial.
 - Telemetry reports display frame time.
+
+#### M3 — Audio output
+
+Speech is made on the PC with [Piper](https://github.com/rhasspy/piper) (offline neural TTS, voice `en_US-lessac-medium`), resampled to 16 kHz and streamed to the robot over the USB serial link, which now runs at 921600 baud. The robot plays it through a MAX98357A I2S amplifier and moves its mouth with the loudness.
+
+**Wiring** (I2S; pins configurable in menuconfig → *aibot audio*):
+
+| MAX98357A pin | Connect to | Notes |
+|---|---|---|
+| VIN | ESP32 5V | 5 V gives more volume than 3.3 V |
+| GND | ESP32 GND | |
+| BCLK | GPIO 4 | Bit clock |
+| LRC | GPIO 5 | Word select (left/right clock) |
+| DIN | GPIO 6 | Audio data |
+| GAIN | leave unconnected | 9 dB gain |
+| SD | leave unconnected | Amp on, plays (left + right) / 2 |
+| Speaker + / − | Amp's + / − speaker terminals | 4 Ω 3 W speaker. Never connect either speaker wire to GND |
+
+GPIO 4–6 avoid I2C (8, 9), the LCD (10–14, 21), USB (19, 20), PSRAM (35–37) and strapping pins. The speaker can draw several hundred mA at full volume; if the board browns out or resets on loud sounds, lower `vol` or power the amp from a separate 5 V supply that shares GND with the ESP32.
+
+**Design**
+
+- `audio` component: I2S at 16 kHz, 16-bit mono, sent to both slots. A 2-second ring buffer in PSRAM feeds a high-priority playback task 20 ms at a time. New streams wait for 100 ms of audio before starting; when the buffer runs dry the speaker gets silence, and the dropout is counted.
+- Serial link: 921600 baud (switched at startup; boot messages stay at 115200). Lines can be up to 1024 characters.
+- Audio travels as `pcm <base64>` lines of 320 samples (20 ms). Each reply reports the robot's buffer, and `say.py` keeps about 0.75 s queued. This uses about half the link.
+- Lip sync: the display task maps the playback loudness of each 20 ms block to mouth openness; the animator opens the mouth in about 25 ms and closes it in about 70 ms.
+
+**Progress**
+
+- [x] `audio` component, playback task, `beep`, `vol`, `pcm` commands
+- [x] Serial link at 921600 baud with 1024-character lines
+- [x] `tools/say.py`: Piper TTS → 16 kHz → streamed with flow control
+- [x] Lip sync from playback loudness
+- [x] Tested without a speaker: 3 s and 6 s sentences streamed in real time with 0 dropouts; all commands answer correctly
+- [ ] Wire the MAX98357A and speaker
+- [ ] `beep` is clearly audible; set a comfortable default `vol`
+- [ ] `say.py` speech sounds clean, with no gaps or clicks
+- [ ] Mouth moves in time with the voice (tune `kSpeechFloor` / `kSpeechGain` in `display_commands.cpp` if needed)
+
+**Checks to run after wiring**
+
+```bash
+cd firmware
+python3 tools/robot_cli.py /dev/ttyACM0     # then: beep, beep 440 1000, vol 30, beep
+python3 tools/say.py /dev/ttyACM0 "Hello, I'm aibot."
+```
 
 After M9, we implement autonomous behaviors.
 

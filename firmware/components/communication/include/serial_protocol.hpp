@@ -13,7 +13,8 @@ namespace comm {
 
 using CommandHandler = void (*)(std::string_view args);
 
-// Installs the UART driver. Call once before anything else in this module.
+// Installs the UART driver and switches the port to 921600 baud. Call once
+// before anything else in this module.
 void serial_init();
 
 // Registers a command by name. Call before serial_start(). Returns false if

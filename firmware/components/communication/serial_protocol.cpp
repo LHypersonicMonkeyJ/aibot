@@ -16,8 +16,13 @@ namespace {
 
 constexpr const char* TAG = "serial";
 constexpr uart_port_t kPort = UART_NUM_0;
-constexpr size_t kMaxLine = 128;
-constexpr size_t kMaxCommands = 16;
+// Long enough for one base64 audio chunk (pcm command).
+constexpr size_t kMaxLine = 1024;
+constexpr size_t kMaxCommands = 32;
+constexpr int kRxBufferBytes = 8192;
+// Fast enough to stream speech audio (M3). The ROM bootloader and early boot
+// logs still use the 115200 console default.
+constexpr uint32_t kBaud = 921600;
 
 struct Command {
     const char* name;
@@ -57,10 +62,10 @@ void dispatch(std::string_view line) {
 }
 
 void rx_task(void*) {
-    char line[kMaxLine];
+    static char line[kMaxLine];
     size_t len = 0;
     bool overflow = false;
-    uint8_t buf[32];
+    uint8_t buf[256];
 
     for (;;) {
         const int n = uart_read_bytes(kPort, buf, sizeof(buf), pdMS_TO_TICKS(20));
@@ -87,10 +92,13 @@ void rx_task(void*) {
 
 void serial_init() {
     g_tx_mutex = xSemaphoreCreateMutex();
-    ESP_ERROR_CHECK(uart_driver_install(kPort, 1024, 0, 0, nullptr, 0));
+    ESP_ERROR_CHECK(uart_driver_install(kPort, kRxBufferBytes, 0, 0, nullptr, 0));
     // Route stdout through the driver too, so logs and protocol lines don't
     // fight over the UART FIFO.
     uart_vfs_dev_use_driver(kPort);
+    fflush(stdout);
+    uart_wait_tx_done(kPort, pdMS_TO_TICKS(100));
+    ESP_ERROR_CHECK(uart_set_baudrate(kPort, kBaud));
 }
 
 bool register_command(const char* name, CommandHandler handler) {
@@ -103,7 +111,7 @@ bool register_command(const char* name, CommandHandler handler) {
 }
 
 void serial_start(int priority) {
-    xTaskCreate(rx_task, "comm_rx", 4096, nullptr, priority, nullptr);
+    xTaskCreate(rx_task, "comm_rx", 6144, nullptr, priority, nullptr);
 }
 
 void sendf(const char* fmt, ...) {

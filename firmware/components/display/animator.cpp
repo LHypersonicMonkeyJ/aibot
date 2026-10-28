@@ -28,6 +28,9 @@ constexpr float kSyllableMinOpen = 0.3f, kSyllableMaxOpen = 1.0f;
 constexpr float kPauseChance = 0.15f;
 constexpr float kPauseMinMs = 150, kPauseMaxMs = 400;
 
+// Lip sync smoothing time constants.
+constexpr float kSpeechAttackMs = 25, kSpeechReleaseMs = 70;
+
 // Large frame gaps (debugger, long hiccup) are capped so nothing jumps.
 constexpr float kMaxStepMs = 100;
 
@@ -174,8 +177,14 @@ Face Animator::update(float dt_ms) {
         talk_open = syl_peak_ * std::sin(3.14159265f * syl_ms_ / syl_dur_);
     }
 
+    // Lip sync: ease toward the level of the sound playing now.
+    const float target = std::clamp(speech_target_, 0.0f, 1.0f);
+    const float tau = target > speech_ ? kSpeechAttackMs : kSpeechReleaseMs;
+    speech_ += (target - speech_) * (1 - std::exp(-dt_ms / tau));
+    if (speech_ < 0.01f && target == 0) speech_ = 0;  // settle, so a still face stays still
+
     Face f = base();
-    f.mouth.open = std::max(f.mouth.open, talk_open);
+    f.mouth.open = std::max({f.mouth.open, talk_open, speech_});
     const float g = ease_out(progress(gaze_ms_, gaze_dur_));
     f.gaze_x = std::clamp(f.gaze_x + gaze_from_x_ + (gaze_to_x_ - gaze_from_x_) * g, -1.0f, 1.0f);
     f.gaze_y = std::clamp(f.gaze_y + gaze_from_y_ + (gaze_to_y_ - gaze_from_y_) * g, -1.0f, 1.0f);

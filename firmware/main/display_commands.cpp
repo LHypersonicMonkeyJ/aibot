@@ -3,6 +3,7 @@
 
 #include "display_commands.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cinttypes>
 #include <cmath>
@@ -12,6 +13,7 @@
 #include <string>
 
 #include "animator.hpp"
+#include "audio.hpp"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -27,6 +29,11 @@ namespace {
 
 constexpr const char* TAG = "display";
 constexpr uint32_t kFramePeriodMs = 33;  // ~30 fps
+
+// Lip sync: speech loudness (RMS, 0..1) to mouth openness. Quieter than the
+// floor is treated as silence; the gain puts normal speech near fully open.
+constexpr float kSpeechFloor = 0.02f;
+constexpr float kSpeechGain = 4.0f;
 
 std::string_view next_token(std::string_view& args) {
     while (!args.empty() && args.front() == ' ') args.remove_prefix(1);
@@ -176,8 +183,13 @@ void display_task(void*) {
     for (;;) {
         xTaskDelayUntil(&wake, pdMS_TO_TICKS(kFramePeriodMs));
         const int64_t now = esp_timer_get_time();
+        const float speech =
+            audio::playing() ? std::clamp((audio::level() - kSpeechFloor) * kSpeechGain, 0.0f, 1.0f) : 0.0f;
         face::Face f;
-        with_anim([&](face::Animator& a) { f = a.update((now - last) / 1000.0f); });
+        with_anim([&](face::Animator& a) {
+            a.set_speech(speech);
+            f = a.update((now - last) / 1000.0f);
+        });
         last = now;
         ++loops;
 

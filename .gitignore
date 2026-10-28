@@ -1,6 +1,7 @@
 # ESP-IDF
 firmware/build/
 firmware/build-host/
+firmware/tools/voices/
 firmware/sdkconfig
 firmware/sdkconfig.old
 firmware/managed_components/

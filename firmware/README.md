@@ -2,12 +2,14 @@
 
 ESP-IDF (C++, FreeRTOS) firmware for the ESP32-S3 DevKitC-1-N8R8. Built with ESP-IDF v6.1 (installed at `~/esp/esp-idf`).
 
-## Current state: M2 LCD in progress
+## Current state: M3 audio output (firmware done, speaker not yet wired)
 
 - Starts a command task and a telemetry task.
 - Sends telemetry once a second: uptime, free heap, minimum free heap, free internal RAM, free PSRAM, task count, and display fps and frame time.
 - Accepts commands from the host over USB serial.
 - Drives the GC9A01 round LCD at 80 MHz SPI with an animated face (two eyes and a mouth) at 30 fps: random blinks, idle glances, smooth changes between expressions, and a talking mouth for testing.
+- Plays 16 kHz audio through a MAX98357A amplifier: test tones, and speech streamed from the PC by `tools/say.py` (Piper TTS). The mouth moves with the sound.
+- The serial link runs at 921600 baud once the app starts (boot messages are at 115200).
 - Servo control (M7) was written early and is not yet tested on hardware: drives three servos through a PCA9685 at 50 Hz. Each joint is clamped to its limits before any pulse is sent.
 - Servos stay limp at boot until commanded. A `servo` command jumps straight to the target at full speed; smooth moves come in M8.
 
@@ -38,6 +40,22 @@ ctest --test-dir build-host          # unit tests
 build-host/face_preview /tmp/faces   # one PNG per expression, plus sheet, sheet_eyes_only, talking, blink, gaze, transition and animation strips
 ```
 
+## Wiring: speaker (M3)
+
+| MAX98357A pin | Connect to | Notes |
+|---|---|---|
+| VIN | ESP32 5V | 5 V gives more volume than 3.3 V |
+| GND | ESP32 GND | |
+| BCLK | GPIO 4 | Bit clock |
+| LRC | GPIO 5 | Word select (left/right clock) |
+| DIN | GPIO 6 | Audio data |
+| GAIN | leave unconnected | 9 dB gain |
+| SD | leave unconnected | Amp on, plays (left + right) / 2 |
+| Speaker + / − | Amp's + / − speaker terminals | 4 Ω 3 W speaker. Never connect either speaker wire to GND |
+
+- **Changing pins or the boot volume:** `idf.py menuconfig` → *aibot audio*.
+- **Power:** at full volume the speaker can draw several hundred mA. If the board resets on loud sounds, lower `vol` or power the amp from a separate 5 V supply that shares GND with the ESP32.
+
 ## Wiring: servos (M7)
 
 | ESP32-S3 | PCA9685 |
@@ -63,6 +81,8 @@ idf.py set-target esp32s3           # first time only
 idf.py -p /dev/ttyACM0 flash monitor   # Ctrl-] exits the monitor
 ```
 
+The monitor runs at 921600 baud, so the first few boot lines (sent at 115200) look garbled; everything after the app starts is readable.
+
 ## Talk to it from Python
 
 ```bash
@@ -70,7 +90,16 @@ pip install -r tools/requirements.txt
 python3 tools/robot_cli.py /dev/ttyACM0
 ```
 
-Type `ping`, `status`, `i2cscan`, `servo head_yaw 30`, `relax` and so on. It only prints replies to your commands, plus errors and boot messages. Add `--telemetry` to see the periodic telemetry, or `--logs` to see ESP_LOG lines. Close `idf.py monitor` first, because only one program can hold the port at a time.
+Type `ping`, `status`, `expr happy`, `beep` and so on. It only prints replies to your commands, plus errors and boot messages. Add `--telemetry` to see the periodic telemetry, or `--logs` to see ESP_LOG lines. Close `idf.py monitor` first, because only one program can hold the port at a time.
+
+## Make it talk
+
+```bash
+python3 tools/say.py /dev/ttyACM0 "Hello, I'm aibot."
+python3 tools/say.py /dev/ttyACM0 --wav clip.wav     # any 16-bit WAV
+```
+
+`say.py` makes speech with Piper on the PC, resamples it to 16 kHz and streams it to the robot. The first run downloads the voice (about 60 MB) into `tools/voices/`. It prints how long playback took and the robot's dropout count, which should stay 0. Close `robot_cli.py` first.
 
 ## Serial protocol (v0)
 
@@ -81,7 +110,7 @@ Type `ping`, `status`, `i2cscan`, `servo head_yaw 30`, `relax` and so on. It onl
 | Command | Reply |
 |---|---|
 | `ping` | `{"type":"pong","uptime_ms":…}` |
-| `status` | one `telemetry` message immediately. Includes `fps` (animation rate), `drawn_fps` (frames actually redrawn) and `frame_us` (draw time) |
+| `status` | one `telemetry` message immediately. Includes `fps` (animation rate), `drawn_fps` (frames actually redrawn), `frame_us` (draw time), `audio_ms` (audio queued) and `dropouts` (times audio ran dry mid-stream since boot) |
 | `rate <ms>` | sets the telemetry period (100–60000 ms), replies `{"type":"ack","cmd":"rate","period_ms":…}` |
 | `reboot` | `{"type":"ack","cmd":"reboot"}`, then restarts |
 | `i2cscan` | `{"type":"i2cscan","found":[64,112]}`: decimal addresses (a PCA9685 shows as 64 = 0x40, plus 112 = 0x70 for its all-call address) |
@@ -93,9 +122,13 @@ Type `ping`, `status`, `i2cscan`, `servo head_yaw 30`, `relax` and so on. It onl
 | `blink` | blinks once now |
 | `eyes [auto on\|off]` | shows or sets idle blinking and eye movement. Replies `{"type":"ack","cmd":"eyes","auto":true\|false}` |
 | `talk [on\|off]` | shows or sets the test talking mouth (random syllables). Replies `{"type":"ack","cmd":"talk","on":true\|false}` |
+| `beep [hz] [ms]` | plays a tone, default 880 Hz for 300 ms (50–8000 Hz, 10–2000 ms) |
+| `vol [0-100]` | sets or shows the speaker volume (%) |
+| `pcm <base64>` | queues up to 380 16-bit little-endian mono samples at 16 kHz. Replies `{"type":"pcm","buffered":…,"capacity":32768,"dropped":…}` so the sender can pace itself |
+| `pcm end` / `pcm stop` | marks the end of a stream / drops everything queued |
 | `lcdtest [image]` | test image: `pattern` (default: red top, green right, blue bottom, white ring), or solid `red`, `green`, `blue`, `white`, `black`. Pauses the face until the next face command |
 | `lcdcfg [setting 0\|1]` | shows or changes `invert`, `mirror_x`, `mirror_y`, `swap_rb` until reboot, then redraws the pattern |
 | `bright [0-100]` | sets or shows backlight brightness (%) |
 | anything else | `{"type":"error","msg":"unknown command","cmd":…}` |
 
-The robot sends `{"type":"boot","reset_reason":…,"idf":…,"pca9685":true|false,"lcd":true|false}` on startup and streams `telemetry` messages periodically.
+The robot sends `{"type":"boot","reset_reason":…,"idf":…,"pca9685":true|false,"lcd":true|false,"audio":true|false}` on startup and streams `telemetry` messages periodically.

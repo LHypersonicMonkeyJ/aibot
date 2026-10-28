@@ -125,6 +125,18 @@ void test_talking_flaps_mouth() {
     for (int i = 0; i < 30; ++i) CHECK(a.update(kFrameMs).mouth.open == rest);
 }
 
+void test_speech_drives_mouth() {
+    face::Animator a(29);
+    a.set_auto(false);
+    a.set_speech(1);
+    for (int i = 0; i < 6; ++i) a.update(kFrameMs);  // 200 ms
+    CHECK(a.update(kFrameMs).mouth.open > 0.9f);
+    a.set_speech(0);
+    for (int i = 0; i < 15; ++i) a.update(kFrameMs);  // 500 ms
+    const float rest = expr("neutral").mouth.open;
+    CHECK(a.update(kFrameMs).mouth.open == rest);
+}
+
 void test_deterministic() {
     face::Animator a(21), b(21);
     for (int i = 0; i < 30 * 10; ++i) CHECK(a.update(kFrameMs) == b.update(kFrameMs));
@@ -141,6 +153,7 @@ int main() {
     test_gaze_in_range();
     test_look_holds_gaze();
     test_talking_flaps_mouth();
+    test_speech_drives_mouth();
     test_deterministic();
     if (g_failures) {
         std::fprintf(stderr, "%d check(s) failed\n", g_failures);

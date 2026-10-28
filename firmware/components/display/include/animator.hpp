@@ -31,6 +31,10 @@ public:
     void set_talking(bool on) { talking_ = on; }
     bool talking() const { return talking_; }
 
+    // How open the mouth should be for the sound playing now, 0..1. The mouth
+    // follows it smoothly: quick to open, a little slower to close.
+    void set_speech(float open) { speech_target_ = open; }
+
     // Idle behaviour: random blinks and eye movement. On by default.
     void set_auto(bool on);
     bool auto_on() const { return auto_; }
@@ -63,6 +67,8 @@ private:
     // Talking: one syllable at a time; peak 0 is a pause.
     bool talking_ = false;
     float syl_ms_ = 0, syl_dur_ = 0, syl_peak_ = 0;
+
+    float speech_target_ = 0, speech_ = 0;
 
     // Blink: -1 when not blinking, else time since it started.
     float blink_ms_ = -1;

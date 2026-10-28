@@ -38,6 +38,7 @@ def format_msg(msg: dict) -> str:
             f"tasks {msg['tasks']}"
             + (f"  fps {msg['fps']} (drawn {msg['drawn_fps']})  frame {msg['frame_us'] / 1000:.1f}ms"
                if "fps" in msg else "")
+            + (f"  audio {msg['audio_ms']}ms  dropouts {msg['dropouts']}" if "audio_ms" in msg else "")
         )
     fields = {k: v for k, v in msg.items() if k != "type"}
     return f"[{msg['type']}] {json.dumps(fields)}"
@@ -69,7 +70,7 @@ def reader(port: serial.Serial, show_logs: bool, show_telemetry: bool,
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("port", help="serial device, e.g. /dev/ttyUSB0")
-    ap.add_argument("--baud", type=int, default=115200)
+    ap.add_argument("--baud", type=int, default=921600)
     ap.add_argument("--logs", action="store_true", help="show ESP_LOG lines")
     ap.add_argument("--telemetry", action="store_true", help="show periodic telemetry")
     args = ap.parse_args()
