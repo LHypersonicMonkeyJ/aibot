@@ -211,20 +211,29 @@ This is the same fundamental separation used in larger robotic control systems.
 
 ### 6. Bench development milestones
 
-| Milestone | Objective | Verification |
-|---|---|---|
-| M1 | ESP32 development environment | Flash firmware and read serial logs |
-| M2 | Servo control | Independently command three servos |
-| M3 | Motion trajectories | Smooth, bounded servo movements |
-| M4 | LCD interface | Animated eyes and expressions |
-| M5 | Audio output | Play synthesized speech |
-| M6 | Audio input | Record microphone audio |
-| M7 | Python communication | Send commands and receive telemetry |
-| M8 | AI integration | Hold a conversation with coordinated expressions and motion |
+| Milestone | Objective | Verification | Status |
+|---|---|---|---|
+| M1 | ESP32 development environment | Flash firmware and read serial logs | ✅ Done. ESP-IDF v6.1 installed; firmware boots, streams telemetry and answers commands on the board |
+| M2 | LCD interface | Animated eyes and expressions | ⬜ Not started |
+| M3 | Audio output | Play synthesized speech | ⬜ Not started |
+| M4 | Audio input | Record microphone audio | ⬜ Not started |
+| M5 | Python communication | Send commands and receive telemetry | 🟡 Serial protocol v0 and `firmware/tools/robot_cli.py` working; backend not started |
+| M6 | Initial AI integration | Hold a conversation with coordinated expressions | ⬜ Not started |
+| M7 | Servo control | Independently command three servos | 🟡 Firmware written and flashed; waiting on PCA9685 wiring to test with real servos |
+| M8 | Motion trajectories | Smooth, bounded servo movements | 🟡 Trajectory planner prototyped and tested in `sim/`; not yet ported to firmware |
+| M9 | Final AI integration | Hold a conversation with coordinated expressions and motion | ⬜ Not started |
 
-After M8, we implement autonomous behaviors.
+*Status as of 2026-10-27. Servo work (M7, M8) now comes after initial AI integration (M6), and M9 adds motion to the conversation; the servo firmware already written stays in the tree.*
 
-#### M9 — Autonomous behavior framework
+**Next steps**
+
+1. Start M2: bring up the LCD and draw animated eyes.
+2. Decide on 240 MHz CPU, and on 16 MB flash (the chip reports 16 MB).
+3. For M7 later: wire the PCA9685 and servos (see `firmware/README.md`), check `i2cscan` finds the board, then command each servo.
+
+After M9, we implement autonomous behaviors.
+
+#### M10 — Autonomous behavior framework
 
 The robot should be able to perform actions without explicit user commands.
 
@@ -326,7 +335,7 @@ Establish a reliable development environment and a minimal application that:
 4. Accepts commands from a Python application.
 5. Reports system uptime and available memory.
 
-Then integrate the PCA9685 and one servo.
+Servo integration (PCA9685) comes later, in M7.
 
 Development tools:
 

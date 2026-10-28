@@ -13,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "serial_protocol.hpp"
+#include "servo_commands.hpp"
 
 namespace {
 
@@ -81,9 +82,13 @@ extern "C" void app_main() {
     comm::register_command("status", cmd_status);
     comm::register_command("rate", cmd_rate);
     comm::register_command("reboot", cmd_reboot);
+    register_servo_commands();
 
-    comm::sendf("{\"type\":\"boot\",\"reset_reason\":%d,\"idf\":\"%s\"}",
-                static_cast<int>(esp_reset_reason()), esp_get_idf_version());
+    servo_init();
+
+    comm::sendf("{\"type\":\"boot\",\"reset_reason\":%d,\"idf\":\"%s\",\"pca9685\":%s}",
+                static_cast<int>(esp_reset_reason()), esp_get_idf_version(),
+                servo_ready() ? "true" : "false");
 
     comm::serial_start(kCommPriority);
     xTaskCreate(telemetry_task, "telemetry", 4096, nullptr, kTelemetryPriority, nullptr);

@@ -1,0 +1,15 @@
+menu "aibot motion"
+
+    config AIBOT_I2C_SDA_GPIO
+        int "I2C SDA GPIO (to PCA9685)"
+        default 8
+
+    config AIBOT_I2C_SCL_GPIO
+        int "I2C SCL GPIO (to PCA9685)"
+        default 9
+
+    config AIBOT_PCA9685_ADDR
+        hex "PCA9685 I2C address"
+        default 0x40
+
+endmenu
