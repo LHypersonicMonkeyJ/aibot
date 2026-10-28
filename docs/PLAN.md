@@ -214,7 +214,7 @@ This is the same fundamental separation used in larger robotic control systems.
 | Milestone | Objective | Verification | Status |
 |---|---|---|---|
 | M1 | ESP32 development environment | Flash firmware and read serial logs | ✅ Done. ESP-IDF v6.1 installed; firmware boots, streams telemetry and answers commands on the board |
-| M2 | LCD interface | Animated eyes and expressions | 🟡 LCD wired and verified. Animated face (eyes and mouth) at 30 fps on the board: blinks, idle glances, eased expression changes, test talking mouth, `look`/`blink`/`eyes`/`talk` commands. 80 MHz SPI, 15 ms/frame |
+| M2 | LCD interface | Animated eyes and expressions | ✅ Done. Animated face (eyes and mouth) at 30 fps: blinks, idle glances, eased expression changes, test talking mouth; `expr`/`look`/`blink`/`eyes`/`talk` commands. 80 MHz SPI, 15 ms/frame |
 | M3 | Audio output | Play synthesized speech | ⬜ Not started |
 | M4 | Audio input | Record microphone audio | ⬜ Not started |
 | M5 | Python communication | Send commands and receive telemetry | 🟡 Serial protocol v0 and `firmware/tools/robot_cli.py` working; backend not started |
@@ -227,7 +227,7 @@ This is the same fundamental separation used in larger robotic control systems.
 
 **Next steps**
 
-1. Finish M2: review the animation on the bench, then mark M2 done.
+1. Start M3: audio output through the MAX98357A amplifier.
 2. Decide on 240 MHz CPU, and on 16 MB flash (the chip reports 16 MB).
 3. For M7 later: wire the PCA9685 and servos (see `firmware/README.md`), check `i2cscan` finds the board, then command each servo.
 
