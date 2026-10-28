@@ -214,7 +214,7 @@ This is the same fundamental separation used in larger robotic control systems.
 | Milestone | Objective | Verification | Status |
 |---|---|---|---|
 | M1 | ESP32 development environment | Flash firmware and read serial logs | ✅ Done. ESP-IDF v6.1 installed; firmware boots, streams telemetry and answers commands on the board |
-| M2 | LCD interface | Animated eyes and expressions | ⬜ Not started |
+| M2 | LCD interface | Animated eyes and expressions | 🟡 LCD wired and verified (bright on 3V3). Driver and face renderer working on the board: all expressions, 26 ms/frame. Animation (display task) to do |
 | M3 | Audio output | Play synthesized speech | ⬜ Not started |
 | M4 | Audio input | Record microphone audio | ⬜ Not started |
 | M5 | Python communication | Send commands and receive telemetry | 🟡 Serial protocol v0 and `firmware/tools/robot_cli.py` working; backend not started |
@@ -227,9 +227,56 @@ This is the same fundamental separation used in larger robotic control systems.
 
 **Next steps**
 
-1. Start M2: bring up the LCD and draw animated eyes.
+1. M2 step 3 onward: display task with blinks, idle gaze and eased transitions.
 2. Decide on 240 MHz CPU, and on 16 MB flash (the chip reports 16 MB).
 3. For M7 later: wire the PCA9685 and servos (see `firmware/README.md`), check `i2cscan` finds the board, then command each servo.
+
+#### M2 — LCD interface
+
+Two flat, glowing eyes on the 240×240 GC9A01 round display: solid rounded shapes in one accent color on black, in the style of Vector or EMO. Expression comes from eye shape alone.
+
+**Wiring** (SPI; all pins configurable in menuconfig):
+
+| LCD pin | ESP32-S3 | Purpose |
+|---|---|---|
+| VCC | 3V3 | Power |
+| GND | GND | Ground |
+| DIN | GPIO 11 | SPI data (MOSI) |
+| CLK | GPIO 12 | SPI clock |
+| CS | GPIO 10 | Chip select |
+| DC | GPIO 13 | Data/command select |
+| RST | GPIO 14 | Reset |
+| BL | GPIO 21 | Backlight (PWM dimming) |
+
+GPIO 10–12 are the native SPI pins, so the bus can run at 80 MHz. These pins avoid I2C (8, 9), octal PSRAM (35–37), USB (19, 20) and strapping pins.
+
+**Design**
+
+- Draw the eyes procedurally rather than with LVGL. The eyes are a few shapes, and a GUI toolkit adds weight without helping.
+- The drawing code is plain C++ with no ESP-IDF dependencies. It runs on the LCD and on a PC, where it produces PNG/GIF previews and unit tests, the same pattern as `sim/` for motion.
+- Each eye is described by a small parameter set: openness, upper and lower lid angle, roundness, size, gaze offset and color. Expressions are named parameter sets, and transitions interpolate between them.
+- Frames are drawn in horizontal bands into two small DMA buffers in internal RAM. One band is sent while the next is drawn, so there's no 115 KB full framebuffer. A full frame is about 12 ms of SPI time at 80 MHz, well inside the 33 ms budget at 30 fps.
+
+**Steps**
+
+1. **Bring-up:** `esp_lcd` with the `espressif/esp_lcd_gc9a01` component. Add an `lcdtest` command (solid colors, then a test pattern) to check color order, orientation and inversion.
+2. **Eye drawing:** a new `display` component, plus a host preview tool that renders every expression to PNG for tuning without flashing.
+3. **Display task:** 30 Hz, low priority. Frame time and fps go into telemetry. Backlight brightness by LEDC PWM.
+4. **Animation:**
+   - Randomized blinks.
+   - Idle gaze: small random eye movements with pauses.
+   - Eased 150–250 ms transitions between expressions.
+   - Expressions: neutral, happy, sad, surprised, angry, sleepy, plus listening and thinking for M6.
+5. **Commands and docs:**
+   - Serial commands: `expr <name>`, `look <x> <y>`, `blink`, `eyes auto on|off`, `bright <0-100>`.
+   - Add them to the protocol table and `robot_cli.py`, and add LCD wiring to `firmware/README.md`.
+
+**Done when:**
+
+- Every expression shows on the LCD.
+- Animation holds a steady 30 fps and blinks look natural.
+- Python can switch expressions and gaze over serial.
+- Telemetry reports display frame time.
 
 After M9, we implement autonomous behaviors.
 

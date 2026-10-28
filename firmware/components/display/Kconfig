@@ -1,0 +1,55 @@
+menu "aibot display"
+
+    config AIBOT_LCD_MOSI_GPIO
+        int "LCD DIN (MOSI) GPIO"
+        default 11
+
+    config AIBOT_LCD_SCLK_GPIO
+        int "LCD CLK GPIO"
+        default 12
+
+    config AIBOT_LCD_CS_GPIO
+        int "LCD CS GPIO"
+        default 10
+
+    config AIBOT_LCD_DC_GPIO
+        int "LCD DC GPIO"
+        default 13
+
+    config AIBOT_LCD_RST_GPIO
+        int "LCD RST GPIO"
+        default 14
+
+    config AIBOT_LCD_BL_GPIO
+        int "LCD BL (backlight) GPIO"
+        default 21
+
+    config AIBOT_LCD_SPI_MHZ
+        int "SPI clock (MHz)"
+        range 1 80
+        default 40
+        help
+            40 MHz is safe over jumper wires. 80 MHz needs short, clean wiring.
+
+    config AIBOT_LCD_INVERT
+        bool "Invert colors"
+        default y
+
+    config AIBOT_LCD_MIRROR_X
+        bool "Mirror X"
+        default y
+
+    config AIBOT_LCD_MIRROR_Y
+        bool "Mirror Y"
+        default n
+
+    config AIBOT_LCD_SWAP_RB
+        bool "Swap red and blue (panel is BGR)"
+        default y
+
+    config AIBOT_LCD_BRIGHTNESS
+        int "Backlight brightness at boot (%)"
+        range 0 100
+        default 80
+
+endmenu

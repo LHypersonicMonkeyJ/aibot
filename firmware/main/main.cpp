@@ -12,6 +12,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "display_commands.hpp"
 #include "serial_protocol.hpp"
 #include "servo_commands.hpp"
 
@@ -83,12 +84,14 @@ extern "C" void app_main() {
     comm::register_command("rate", cmd_rate);
     comm::register_command("reboot", cmd_reboot);
     register_servo_commands();
+    register_display_commands();
 
     servo_init();
+    display_init();
 
-    comm::sendf("{\"type\":\"boot\",\"reset_reason\":%d,\"idf\":\"%s\",\"pca9685\":%s}",
+    comm::sendf("{\"type\":\"boot\",\"reset_reason\":%d,\"idf\":\"%s\",\"pca9685\":%s,\"lcd\":%s}",
                 static_cast<int>(esp_reset_reason()), esp_get_idf_version(),
-                servo_ready() ? "true" : "false");
+                servo_ready() ? "true" : "false", display_ready() ? "true" : "false");
 
     comm::serial_start(kCommPriority);
     xTaskCreate(telemetry_task, "telemetry", 4096, nullptr, kTelemetryPriority, nullptr);

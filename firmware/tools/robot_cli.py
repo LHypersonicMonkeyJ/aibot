@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Interactive serial console for the M1 firmware.
 
-Prints telemetry and replies from the robot, and sends whatever you type as a
-command (ping, status, rate <ms>, reboot). Ctrl-D or Ctrl-C to quit.
+Sends whatever you type as a command (ping, status, expr happy, ...) and prints
+the robot's replies. Periodic telemetry and ESP_LOG lines are hidden unless you
+pass --telemetry or --logs. Ctrl-D or Ctrl-C to quit.
 
     python3 firmware/tools/robot_cli.py /dev/ttyUSB0
 """
@@ -40,7 +41,8 @@ def format_msg(msg: dict) -> str:
     return f"[{msg['type']}] {json.dumps(fields)}"
 
 
-def reader(port: serial.Serial, show_logs: bool, stop: threading.Event):
+def reader(port: serial.Serial, show_logs: bool, show_telemetry: bool,
+           want_status: threading.Event, stop: threading.Event):
     while not stop.is_set():
         try:
             raw = port.readline()
@@ -52,6 +54,11 @@ def reader(port: serial.Serial, show_logs: bool, stop: threading.Event):
             continue
         kind, payload = parse_line(raw)
         if kind == "msg":
+            if payload["type"] == "telemetry":
+                # "status" replies with a telemetry message, so always show that one.
+                if not (show_telemetry or want_status.is_set()):
+                    continue
+                want_status.clear()
             print(format_msg(payload))
         elif show_logs and payload:
             print(f"  log | {payload}")
@@ -61,7 +68,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("port", help="serial device, e.g. /dev/ttyUSB0")
     ap.add_argument("--baud", type=int, default=115200)
-    ap.add_argument("--no-logs", action="store_true", help="hide ESP_LOG lines")
+    ap.add_argument("--logs", action="store_true", help="show ESP_LOG lines")
+    ap.add_argument("--telemetry", action="store_true", help="show periodic telemetry")
     args = ap.parse_args()
 
     port = serial.Serial(baudrate=args.baud, timeout=0.2)
@@ -72,7 +80,9 @@ def main():
     port.open()
 
     stop = threading.Event()
-    threading.Thread(target=reader, args=(port, not args.no_logs, stop), daemon=True).start()
+    want_status = threading.Event()
+    threading.Thread(target=reader, args=(port, args.logs, args.telemetry, want_status, stop),
+                     daemon=True).start()
 
     try:
         for line in sys.stdin:
@@ -80,6 +90,8 @@ def main():
                 break
             line = line.strip()
             if line:
+                if line.split()[0] == "status":
+                    want_status.set()
                 port.write((line + "\n").encode())
     except KeyboardInterrupt:
         pass
