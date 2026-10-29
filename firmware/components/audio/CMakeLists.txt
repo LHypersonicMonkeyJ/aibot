@@ -2,5 +2,5 @@ idf_component_register(
     SRCS "audio.cpp"
     INCLUDE_DIRS "include"
     REQUIRES esp_driver_i2s
-    PRIV_REQUIRES esp_psram
+    PRIV_REQUIRES esp_psram esp_driver_gpio
 )

@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cmath>
 
+#include "driver/gpio.h"
 #include "driver/i2s_std.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
@@ -124,6 +125,11 @@ esp_err_t init() {
     cfg.gpio_cfg.dout = static_cast<gpio_num_t>(CONFIG_AIBOT_I2S_DIN_GPIO);
     cfg.gpio_cfg.din = I2S_GPIO_UNUSED;
     ESP_RETURN_ON_ERROR(i2s_channel_init_std_mode(g_tx, &cfg), TAG, "std mode");
+    // Weakest drive: full-strength edges ring on jumper wires and the amp
+    // miscounts BCLK, giving noise instead of sound.
+    for (int pin : {CONFIG_AIBOT_I2S_BCLK_GPIO, CONFIG_AIBOT_I2S_LRC_GPIO, CONFIG_AIBOT_I2S_DIN_GPIO}) {
+        gpio_set_drive_capability(static_cast<gpio_num_t>(pin), GPIO_DRIVE_CAP_0);
+    }
     ESP_RETURN_ON_ERROR(i2s_channel_enable(g_tx), TAG, "enable");
 
     g_ready = true;

@@ -15,6 +15,6 @@ menu "aibot audio"
     config AIBOT_AUDIO_VOLUME
         int "Volume at boot (%)"
         range 0 100
-        default 60
+        default 50
 
 endmenu

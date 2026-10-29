@@ -2,7 +2,7 @@
 
 ESP-IDF (C++, FreeRTOS) firmware for the ESP32-S3 DevKitC-1-N8R8. Built with ESP-IDF v6.1 (installed at `~/esp/esp-idf`).
 
-## Current state: M3 audio output (firmware done, speaker not yet wired)
+## Current state: M3 audio output done (speaker wired and talking)
 
 - Starts a command task and a telemetry task.
 - Sends telemetry once a second: uptime, free heap, minimum free heap, free internal RAM, free PSRAM, task count, and display fps and frame time.
@@ -44,8 +44,8 @@ build-host/face_preview /tmp/faces   # one PNG per expression, plus sheet, sheet
 
 | MAX98357A pin | Connect to | Notes |
 |---|---|---|
-| VIN | ESP32 5V | 5 V gives more volume than 3.3 V |
-| GND | ESP32 GND | |
+| VIN | External 5 V supply | The board's 5V pin read 1.2 V when powered from the COM port. On many ESP32-S3 boards that pin only gets USB power once the IN-OUT solder jumper next to it is bridged |
+| GND | External supply GND and one ESP32 GND, tied at a single point | All grounds must be shared, or the amp plays noise |
 | BCLK | GPIO 4 | Bit clock |
 | LRC | GPIO 5 | Word select (left/right clock) |
 | DIN | GPIO 6 | Audio data |
@@ -55,6 +55,8 @@ build-host/face_preview /tmp/faces   # one PNG per expression, plus sheet, sheet
 
 - **Changing pins or the boot volume:** `idf.py menuconfig` → *aibot audio*.
 - **Power:** at full volume the speaker can draw several hundred mA. If the board resets on loud sounds, lower `vol` or power the amp from a separate 5 V supply that shares GND with the ESP32.
+- **Faint or garbled noise instead of sound,** which clears up when you touch the BCLK pin: the bit clock is ringing on the wire. The firmware already sets the I2S pins to their weakest drive. Keep the I2S wires short (a long BCLK jumper caused noisy speech on the bench; a shorter one fixed it). If it persists, run a GND wire alongside them and add a 33–100 Ω resistor in series on BCLK, close to the ESP32.
+- **One crack when a program opens the serial port:** opening the port resets the board, and the amp, powered separately, plays the glitch on the I2S pins during boot. Harmless. To silence it, wire SD to a spare GPIO with a 10 kΩ pull-down and have the firmware enable the amp after I2S starts.
 
 ## Wiring: servos (M7)
 

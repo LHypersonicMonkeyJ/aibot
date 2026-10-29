@@ -215,7 +215,7 @@ This is the same fundamental separation used in larger robotic control systems.
 |---|---|---|---|
 | M1 | ESP32 development environment | Flash firmware and read serial logs | ✅ Done. ESP-IDF v6.1 installed; firmware boots, streams telemetry and answers commands on the board |
 | M2 | LCD interface | Animated eyes and expressions | ✅ Done. Animated face (eyes and mouth) at 30 fps: blinks, idle glances, eased expression changes, test talking mouth; `expr`/`look`/`blink`/`eyes`/`talk` commands. 80 MHz SPI, 15 ms/frame |
-| M3 | Audio output | Play synthesized speech | 🟡 Firmware and `say.py` done and tested without a speaker (speech streams in real time, 0 dropouts). Waiting on MAX98357A + speaker wiring to hear it |
+| M3 | Audio output | Play synthesized speech | ✅ Done. Speech from `say.py` plays cleanly through the MAX98357A and speaker, 0 dropouts; boot volume 50%. Lip sync timing still to check by eye |
 | M4 | Audio input | Record microphone audio | ⬜ Not started |
 | M5 | Python communication | Send commands and receive telemetry | 🟡 Serial protocol v0 and `firmware/tools/robot_cli.py` working; backend not started |
 | M6 | Initial AI integration | Hold a conversation with coordinated expressions | ⬜ Not started |
@@ -223,11 +223,11 @@ This is the same fundamental separation used in larger robotic control systems.
 | M8 | Motion trajectories | Smooth, bounded servo movements | 🟡 Trajectory planner prototyped and tested in `sim/`; not yet ported to firmware |
 | M9 | Final AI integration | Hold a conversation with coordinated expressions and motion | ⬜ Not started |
 
-*Status as of 2026-10-27. Servo work (M7, M8) now comes after initial AI integration (M6), and M9 adds motion to the conversation; the servo firmware already written stays in the tree.*
+*Status as of 2026-10-28. Servo work (M7, M8) now comes after initial AI integration (M6), and M9 adds motion to the conversation; the servo firmware already written stays in the tree.*
 
 **Next steps**
 
-1. Finish M3: wire the MAX98357A and speaker (wiring below), then run the M3 checks.
+1. Start M4 (audio input). While talking, check the mouth moves in time with the voice (last open M3 item).
 2. Decide on 240 MHz CPU, and on 16 MB flash (the chip reports 16 MB).
 3. For M7 later: wire the PCA9685 and servos (see `firmware/README.md`), check `i2cscan` finds the board, then command each servo.
 
@@ -286,7 +286,7 @@ Speech is made on the PC with [Piper](https://github.com/rhasspy/piper) (offline
 
 | MAX98357A pin | Connect to | Notes |
 |---|---|---|
-| VIN | ESP32 5V | 5 V gives more volume than 3.3 V |
+| VIN | External 5 V supply (shared GND) | The board's 5V pin is unpowered from USB on this board; see bench findings |
 | GND | ESP32 GND | |
 | BCLK | GPIO 4 | Bit clock |
 | LRC | GPIO 5 | Word select (left/right clock) |
@@ -311,10 +311,16 @@ GPIO 4–6 avoid I2C (8, 9), the LCD (10–14, 21), USB (19, 20), PSRAM (35–37
 - [x] `tools/say.py`: Piper TTS → 16 kHz → streamed with flow control
 - [x] Lip sync from playback loudness
 - [x] Tested without a speaker: 3 s and 6 s sentences streamed in real time with 0 dropouts; all commands answer correctly
-- [ ] Wire the MAX98357A and speaker
-- [ ] `beep` is clearly audible; set a comfortable default `vol`
-- [ ] `say.py` speech sounds clean, with no gaps or clicks
+- [x] Wire the MAX98357A and speaker
+- [x] `beep` is clearly audible; set a comfortable default `vol` (50%)
+- [x] `say.py` speech sounds clean, with no gaps or clicks
 - [ ] Mouth moves in time with the voice (tune `kSpeechFloor` / `kSpeechGain` in `display_commands.cpp` if needed)
+
+**Bench findings (2026-10-28)**
+
+- The board's 5V pin read 1.2 V when powered from the COM port, so the amp runs from an external 5 V supply with grounds tied at a single point. On many ESP32-S3 boards that pin only gets USB power once the IN-OUT solder jumper next to it is bridged.
+- At first the amp played faint noise or garbage, and the beep came through only when a finger touched BCLK: the bit clock was ringing on a long jumper wire. Fixed by setting the I2S pins to their weakest drive in firmware and using a shorter BCLK wire.
+- Known issue: one crack each time a program opens the serial port, because that resets the board and the separately powered amp plays the boot glitch. Fix later, if wanted, by driving SD from a GPIO with a 10 kΩ pull-down.
 
 **Checks to run after wiring**
 

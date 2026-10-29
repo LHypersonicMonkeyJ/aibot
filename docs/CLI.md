@@ -111,7 +111,7 @@ The test pattern should show a red dot at the top, green on the right, blue at t
 | --- | --- | --- |
 | `beep` | Plays an 880 Hz tone for 300 ms | `[ack] {"cmd": "beep", "hz": 880, "ms": 300}` |
 | `beep <hz> <ms>` | Plays a tone, 50 to 8000 Hz, 10 to 2000 ms | same |
-| `vol <0-100>` | Sets the speaker volume in %. `vol` alone shows it. Boot default is 60 | `[ack] {"cmd": "vol", "percent": 60}` |
+| `vol <0-100>` | Sets the speaker volume in %. `vol` alone shows it. Boot default is 50 | `[ack] {"cmd": "vol", "percent": 50}` |
 | `pcm …` | Used by `say.py` to stream audio. Not meant for typing | `[pcm] {"buffered": …, "capacity": 32768, "dropped": 0}` |
 
 ### Speech from the PC: `say.py`
