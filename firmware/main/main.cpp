@@ -14,6 +14,7 @@
 #include "freertos/task.h"
 #include "audio.hpp"
 #include "audio_commands.hpp"
+#include "microphone.hpp"
 #include "display_commands.hpp"
 #include "serial_protocol.hpp"
 #include "servo_commands.hpp"
@@ -38,11 +39,12 @@ void send_telemetry() {
     const DisplayStats d = display_stats();
     comm::sendf(
         "{\"type\":\"telemetry\",\"uptime_ms\":%" PRId64 ",\"free_heap\":%" PRIu32
-        ",\"min_free_heap\":%" PRIu32 ",\"free_internal\":%zu,\"free_psram\":%zu,\"tasks\":%u,\"fps\":%" PRIu32 ",\"drawn_fps\":%" PRIu32 ",\"frame_us\":%" PRIu32 ",\"audio_ms\":%u,\"dropouts\":%" PRIu32 "}",
+        ",\"min_free_heap\":%" PRIu32 ",\"free_internal\":%zu,\"free_psram\":%zu,\"tasks\":%u,\"fps\":%" PRIu32 ",\"drawn_fps\":%" PRIu32 ",\"frame_us\":%" PRIu32 ",\"audio_ms\":%u,\"dropouts\":%" PRIu32 ",\"mic_peak\":%.3f,\"mic_overruns\":%" PRIu32 "}",
         uptime_ms(), esp_get_free_heap_size(), esp_get_minimum_free_heap_size(),
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
         static_cast<unsigned>(uxTaskGetNumberOfTasks()), d.fps, d.drawn_fps, d.frame_us,
-        static_cast<unsigned>(audio::buffered() * 1000 / audio::kSampleRate), audio::dropouts());
+        static_cast<unsigned>(audio::buffered() * 1000 / audio::kSampleRate), audio::dropouts(),
+        static_cast<double>(mic::take_peak()), mic::overruns());
 }
 
 void telemetry_task(void*) {
@@ -97,10 +99,10 @@ extern "C" void app_main() {
     display_init();
     audio_init();
 
-    comm::sendf("{\"type\":\"boot\",\"reset_reason\":%d,\"idf\":\"%s\",\"pca9685\":%s,\"lcd\":%s,\"audio\":%s}",
+    comm::sendf("{\"type\":\"boot\",\"reset_reason\":%d,\"idf\":\"%s\",\"pca9685\":%s,\"lcd\":%s,\"audio\":%s,\"mic\":%s}",
                 static_cast<int>(esp_reset_reason()), esp_get_idf_version(),
                 servo_ready() ? "true" : "false", display_ready() ? "true" : "false",
-                audio_ready() ? "true" : "false");
+                audio_ready() ? "true" : "false", mic_ready() ? "true" : "false");
 
     comm::serial_start(kCommPriority);
     audio_start(kAudioPriority);

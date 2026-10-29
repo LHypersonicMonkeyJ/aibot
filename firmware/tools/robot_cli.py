@@ -39,6 +39,7 @@ def format_msg(msg: dict) -> str:
             + (f"  fps {msg['fps']} (drawn {msg['drawn_fps']})  frame {msg['frame_us'] / 1000:.1f}ms"
                if "fps" in msg else "")
             + (f"  audio {msg['audio_ms']}ms  dropouts {msg['dropouts']}" if "audio_ms" in msg else "")
+            + (f"  mic peak {msg['mic_peak']:.3f}  overruns {msg['mic_overruns']}" if "mic_peak" in msg else "")
         )
     fields = {k: v for k, v in msg.items() if k != "type"}
     return f"[{msg['type']}] {json.dumps(fields)}"
@@ -57,6 +58,8 @@ def reader(port: serial.Serial, show_logs: bool, show_telemetry: bool,
             continue
         kind, payload = parse_line(raw)
         if kind == "msg":
+            if payload["type"] == "mic":  # streamed audio after "mic on"; use record.py to save it
+                continue
             if payload["type"] == "telemetry":
                 # "status" replies with a telemetry message, so always show that one.
                 if not (show_telemetry or want_status.is_set()):

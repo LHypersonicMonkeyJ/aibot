@@ -44,7 +44,7 @@ expr hapy
 | `error`     | Bad arguments, unknown command, or hardware not ready                                                        |
 | `pong`      | Reply to `ping`                                                                                            |
 | `telemetry` | Reply to `status`, or every second with `--telemetry`                                                    |
-| `boot`      | The board just started: `reset_reason`, `idf` version, and whether the `pca9685`, `lcd` and `audio` are ready |
+| `boot`      | The board just started: `reset_reason`, `idf` version, and whether the `pca9685`, `lcd`, `audio` and `mic` are ready |
 | `i2cscan`   | Reply to `i2cscan`                                                                                         |
 
 Under the hood the robot sends one JSON object per line. Commands are plain text, one per line.
@@ -54,7 +54,7 @@ Under the hood the robot sends one JSON object per line. Commands are plain text
 | Command       | What it does                                                               | Reply                                                             |
 | ------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `ping`      | Checks the board is alive                                                  | `[pong] {"uptime_ms": …}`                                      |
-| `status`    | Prints one telemetry line now                                              | `[telemetry] up 61.3s  heap …  internal …  psram …  tasks 8  fps 30 (drawn 2)  frame 14.8ms  audio 0ms  dropouts 0` |
+| `status`    | Prints one telemetry line now                                              | `[telemetry] up 61.3s  heap …  internal …  psram …  tasks 8  fps 30 (drawn 2)  frame 14.8ms  audio 0ms  dropouts 0  mic peak 0.000  overruns 0` |
 | `rate <ms>` | Sets the telemetry period, 100 to 60000 ms. Back to 1000 ms after a reboot | `[ack] {"cmd": "rate", "period_ms": …}`                        |
 | `reboot`    | Restarts the board                                                         | `[ack] {"cmd": "reboot"}`, then a `boot` line                 |
 
@@ -113,6 +113,9 @@ The test pattern should show a red dot at the top, green on the right, blue at t
 | `beep <hz> <ms>` | Plays a tone, 50 to 8000 Hz, 10 to 2000 ms | same |
 | `vol <0-100>` | Sets the speaker volume in %. `vol` alone shows it. Boot default is 50 | `[ack] {"cmd": "vol", "percent": 50}` |
 | `pcm …` | Used by `say.py` to stream audio. Not meant for typing | `[pcm] {"buffered": …, "capacity": 32768, "dropped": 0}` |
+| `mic` | Shows whether the mic is streaming, and its gain | `[ack] {"cmd": "mic", "on": false, "gain_db": 18}` |
+| `mic on` / `mic off` | Starts or stops streaming the mic to the PC, one `mic` line per 20 ms. The CLI hides those lines; use `record.py` to save them | same |
+| `mic gain <0-40>` | Sets the mic gain in dB. Boot default is 18. Loud speech close to the mic can clip; `record.py` warns when it does | same |
 
 ### Speech from the PC: `say.py`
 
@@ -125,6 +128,18 @@ python3 tools/say.py /dev/ttyACM0 "Hi" --save hi.wav    # also keep the audio th
 ```
 
 It makes the speech on the PC with Piper (voice `en_US-lessac-medium`, downloaded to `tools/voices/` on first use, about 60 MB), streams it at 16 kHz, and the mouth moves with the sound. It ends with a line like `played 2.9 s in 3.1 s, robot dropouts since boot: 0`.
+
+### Recording on the PC: `record.py`
+
+Close the CLI first, then:
+
+```bash
+python3 tools/record.py /dev/ttyACM0                     # 5 s into mic.wav
+python3 tools/record.py /dev/ttyACM0 -s 10 -o hello.wav  # 10 s into hello.wav
+python3 tools/record.py /dev/ttyACM0 --gain 30           # set the mic gain first
+```
+
+It shows a live level bar while recording, then a summary like `recorded 5.0 s, 0 blocks missing (gaps)` and `peak -12.3 dBFS, average -35.0 dBFS, 0 clipped samples`. It warns if the audio is all zeros (mic not wired), clipped (lower `--gain`) or very quiet (raise it). Play a recording on the robot with `say.py --wav`.
 
 ## Servo commands (M7, not yet tested)
 
@@ -158,4 +173,6 @@ A joint can be given by name or index: `servo head_yaw 30` and `servo 1 30` do t
 | Nothing but garbage from the CLI                 | Wrong baud rate                    | The robot uses 921600 since M3. Update the firmware, or pass `--baud 115200` to talk to old firmware |
 | `beep` is silent                                 | Amp wiring or volume               | Check BCLK (GPIO 4), LRC (5), DIN (6), VIN on 5V, and the speaker on the amp's + / − terminals. Try `vol 80` |
 | Speech has gaps, or `dropouts` goes up           | The PC couldn't keep up            | Close other programs using the port or CPU and retry. `say.py` reports dropouts at the end |
+| `record.py` says all zeros                       | Mic not wired, or wired wrong      | Check VDD on 3V3, SCK (GPIO 15), WS (16), SD (17), and L/R on GND |
+| `record.py` reports gaps, or `mic_overruns` goes up | The link or PC fell behind      | Close other programs using the port or CPU and retry |
 | Board resets on loud sounds                      | Speaker drawing too much power     | Lower `vol`, or power the amp from a separate 5 V supply that shares GND with the ESP32 |

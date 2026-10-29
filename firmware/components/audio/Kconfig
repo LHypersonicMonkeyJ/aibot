@@ -17,4 +17,21 @@ menu "aibot audio"
         range 0 100
         default 50
 
+    config AIBOT_MIC_SCK_GPIO
+        int "INMP441 SCK (bit clock) GPIO"
+        default 15
+
+    config AIBOT_MIC_WS_GPIO
+        int "INMP441 WS (word select) GPIO"
+        default 16
+
+    config AIBOT_MIC_SD_GPIO
+        int "INMP441 SD (data) GPIO"
+        default 17
+
+    config AIBOT_MIC_GAIN_DB
+        int "Microphone gain at boot (dB)"
+        range 0 40
+        default 18
+
 endmenu

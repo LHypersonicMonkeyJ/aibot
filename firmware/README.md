@@ -2,13 +2,14 @@
 
 ESP-IDF (C++, FreeRTOS) firmware for the ESP32-S3 DevKitC-1-N8R8. Built with ESP-IDF v6.1 (installed at `~/esp/esp-idf`).
 
-## Current state: M3 audio output done (speaker wired and talking)
+## Current state: M4 audio input done (mic wired and recording)
 
 - Starts a command task and a telemetry task.
-- Sends telemetry once a second: uptime, free heap, minimum free heap, free internal RAM, free PSRAM, task count, and display fps and frame time.
+- Sends telemetry once a second: uptime, free heap, minimum free heap, free internal RAM, free PSRAM, task count, display fps and frame time, speaker buffer and dropouts, and mic peak level and overruns.
 - Accepts commands from the host over USB serial.
 - Drives the GC9A01 round LCD at 80 MHz SPI with an animated face (two eyes and a mouth) at 30 fps: random blinks, idle glances, smooth changes between expressions, and a talking mouth for testing.
 - Plays 16 kHz audio through a MAX98357A amplifier: test tones, and speech streamed from the PC by `tools/say.py` (Piper TTS). The mouth moves with the sound.
+- Records from an INMP441 microphone at 16 kHz and streams it to the PC on `mic on`; `tools/record.py` saves it as a WAV file.
 - The serial link runs at 921600 baud once the app starts (boot messages are at 115200).
 - Servo control (M7) was written early and is not yet tested on hardware: drives three servos through a PCA9685 at 50 Hz. Each joint is clamped to its limits before any pulse is sent.
 - Servos stay limp at boot until commanded. A `servo` command jumps straight to the target at full speed; smooth moves come in M8.
@@ -58,6 +59,20 @@ build-host/face_preview /tmp/faces   # one PNG per expression, plus sheet, sheet
 - **Faint or garbled noise instead of sound,** which clears up when you touch the BCLK pin: the bit clock is ringing on the wire. The firmware already sets the I2S pins to their weakest drive. Keep the I2S wires short (a long BCLK jumper caused noisy speech on the bench; a shorter one fixed it). If it persists, run a GND wire alongside them and add a 33–100 Ω resistor in series on BCLK, close to the ESP32.
 - **One crack when a program opens the serial port:** opening the port resets the board, and the amp, powered separately, plays the glitch on the I2S pins during boot. Harmless. To silence it, wire SD to a spare GPIO with a 10 kΩ pull-down and have the firmware enable the amp after I2S starts.
 
+## Wiring: microphone (M4)
+
+| INMP441 pin | Connect to | Notes |
+|---|---|---|
+| VDD | ESP32 3V3 | 3.3 V only |
+| GND | ESP32 GND | |
+| SCK | GPIO 15 | Bit clock. Keep it short |
+| WS | GPIO 16 | Word select |
+| SD | GPIO 17 | Audio data |
+| L/R | GND | Mic sends on the left slot |
+
+- **Changing pins or the boot gain:** `idf.py menuconfig` → *aibot audio*. The gain (default 18 dB) can also be changed at run time with `mic gain`.
+- **All zeros when recording:** the mic isn't sending. Check VDD, SD on GPIO 17 and L/R on GND. The firmware pulls SD down, so a missing mic records silence rather than noise.
+
 ## Wiring: servos (M7)
 
 | ESP32-S3 | PCA9685 |
@@ -102,6 +117,15 @@ python3 tools/say.py /dev/ttyACM0 --wav clip.wav     # any 16-bit WAV
 ```
 
 `say.py` makes speech with Piper on the PC, resamples it to 16 kHz and streams it to the robot. The first run downloads the voice (about 60 MB) into `tools/voices/`. It prints how long playback took and the robot's dropout count, which should stay 0. Close `robot_cli.py` first.
+
+## Record from the mic
+
+```bash
+python3 tools/record.py /dev/ttyACM0 -s 5 -o hello.wav   # speak during the 5 s
+python3 tools/say.py /dev/ttyACM0 --wav hello.wav        # hear it back on the robot
+```
+
+`record.py` turns the mic stream on, shows a live level bar, and saves 16 kHz mono audio. It then reports gaps (should be 0), peak and average level, and clipping, and warns if the audio is all zeros. `--gain <0-40>` sets the mic gain in dB first. Close `robot_cli.py` first.
 
 ## Serial protocol (v0)
 

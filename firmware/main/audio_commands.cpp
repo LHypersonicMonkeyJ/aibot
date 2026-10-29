@@ -1,4 +1,5 @@
-// M3 serial commands: test tones, volume, and streaming speech from the PC.
+// Audio serial commands: test tones, volume and streaming speech from the PC
+// (M3), and streaming the microphone to the PC (M4).
 
 #include "audio_commands.hpp"
 
@@ -7,6 +8,7 @@
 #include <string>
 
 #include "audio.hpp"
+#include "microphone.hpp"
 #include "esp_log.h"
 #include "serial_protocol.hpp"
 
@@ -14,6 +16,7 @@ namespace {
 
 constexpr const char* TAG = "audio_cmd";
 bool g_audio_ok = false;
+bool g_mic_ok = false;
 
 std::string_view next_token(std::string_view& args) {
     while (!args.empty() && args.front() == ' ') args.remove_prefix(1);
@@ -124,25 +127,86 @@ void cmd_pcm(std::string_view args) {
                 static_cast<unsigned long>(dropped));
 }
 
+// --- Microphone (M4) ---
+
+void b64_encode(const uint8_t* in, size_t n, char* out) {
+    static constexpr char kAlphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t o = 0;
+    for (size_t i = 0; i < n; i += 3) {
+        const uint32_t b = (in[i] << 16) | (i + 1 < n ? in[i + 1] << 8 : 0) | (i + 2 < n ? in[i + 2] : 0);
+        out[o++] = kAlphabet[(b >> 18) & 63];
+        out[o++] = kAlphabet[(b >> 12) & 63];
+        out[o++] = i + 1 < n ? kAlphabet[(b >> 6) & 63] : '=';
+        out[o++] = i + 2 < n ? kAlphabet[b & 63] : '=';
+    }
+    out[o] = '\0';
+}
+
+// Runs in the mic task: one line per 20 ms block while streaming.
+void send_mic_block(const int16_t* samples, size_t n, uint32_t seq) {
+    static char text[(mic::kBlockSamples * 2 + 2) / 3 * 4 + 1];
+    b64_encode(reinterpret_cast<const uint8_t*>(samples), n * 2, text);
+    comm::sendf("{\"type\":\"mic\",\"seq\":%lu,\"data\":\"%s\"}", static_cast<unsigned long>(seq), text);
+}
+
+void reply_mic() {
+    comm::sendf("{\"type\":\"ack\",\"cmd\":\"mic\",\"on\":%s,\"gain_db\":%d}",
+                mic::streaming() ? "true" : "false", mic::gain_db());
+}
+
+// mic [on|off]   start or stop streaming
+// mic gain <dB>  0-40
+void cmd_mic(std::string_view args) {
+    if (!g_mic_ok) {
+        reply_error("mic init failed, check the boot log");
+        return;
+    }
+    const std::string_view tok = next_token(args);
+    if (tok == "on" || tok == "off") {
+        mic::set_streaming(tok == "on");
+    } else if (tok == "gain") {
+        int db = 0;
+        if (!parse_int(next_token(args), &db) || db < 0 || db > 40) {
+            reply_error("usage: mic gain <0-40>");
+            return;
+        }
+        mic::set_gain_db(db);
+    } else if (!tok.empty()) {
+        reply_error("usage: mic [on|off|gain <0-40>]");
+        return;
+    }
+    reply_mic();
+}
+
 }  // namespace
 
 void audio_init() {
-    const esp_err_t err = audio::init();
+    esp_err_t err = audio::init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "audio init failed: %s", esp_err_to_name(err));
-        return;
+    } else {
+        g_audio_ok = true;
     }
-    g_audio_ok = true;
+    err = mic::init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "mic init failed: %s", esp_err_to_name(err));
+    } else {
+        g_mic_ok = true;
+    }
 }
 
 bool audio_ready() { return g_audio_ok; }
+bool mic_ready() { return g_mic_ok; }
 
 void audio_start(int priority) {
     if (g_audio_ok) audio::start(priority);
+    if (g_mic_ok) mic::start(priority, send_mic_block);
 }
 
 void register_audio_commands() {
     comm::register_command("beep", cmd_beep);
     comm::register_command("vol", cmd_vol);
     comm::register_command("pcm", cmd_pcm);
+    comm::register_command("mic", cmd_mic);
 }

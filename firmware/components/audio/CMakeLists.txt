@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "audio.cpp"
+    SRCS "audio.cpp" "microphone.cpp"
     INCLUDE_DIRS "include"
     REQUIRES esp_driver_i2s
     PRIV_REQUIRES esp_psram esp_driver_gpio

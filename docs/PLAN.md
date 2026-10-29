@@ -216,7 +216,7 @@ This is the same fundamental separation used in larger robotic control systems.
 | M1 | ESP32 development environment | Flash firmware and read serial logs | ✅ Done. ESP-IDF v6.1 installed; firmware boots, streams telemetry and answers commands on the board |
 | M2 | LCD interface | Animated eyes and expressions | ✅ Done. Animated face (eyes and mouth) at 30 fps: blinks, idle glances, eased expression changes, test talking mouth; `expr`/`look`/`blink`/`eyes`/`talk` commands. 80 MHz SPI, 15 ms/frame |
 | M3 | Audio output | Play synthesized speech | ✅ Done. Speech from `say.py` plays cleanly through the MAX98357A and speaker, 0 dropouts; boot volume 50%. Lip sync timing still to check by eye |
-| M4 | Audio input | Record microphone audio | ⬜ Not started |
+| M4 | Audio input | Record microphone audio | ✅ Done. INMP441 streams 16 kHz audio to the PC with no gaps, also while the robot speaks; `tools/record.py` saves it as WAV and voice plays back clearly. Gain 18 dB |
 | M5 | Python communication | Send commands and receive telemetry | 🟡 Serial protocol v0 and `firmware/tools/robot_cli.py` working; backend not started |
 | M6 | Initial AI integration | Hold a conversation with coordinated expressions | ⬜ Not started |
 | M7 | Servo control | Independently command three servos | 🟡 Firmware written and flashed; waiting on PCA9685 wiring to test with real servos |
@@ -227,7 +227,7 @@ This is the same fundamental separation used in larger robotic control systems.
 
 **Next steps**
 
-1. Start M4 (audio input). While talking, check the mouth moves in time with the voice (last open M3 item).
+1. Start M5 (Python backend). While the robot talks, check the mouth moves in time with the voice (last open M3 item).
 2. Decide on 240 MHz CPU, and on 16 MB flash (the chip reports 16 MB).
 3. For M7 later: wire the PCA9685 and servos (see `firmware/README.md`), check `i2cscan` finds the board, then command each servo.
 
@@ -328,6 +328,59 @@ GPIO 4–6 avoid I2C (8, 9), the LCD (10–14, 21), USB (19, 20), PSRAM (35–37
 cd firmware
 python3 tools/robot_cli.py /dev/ttyACM0     # then: beep, beep 440 1000, vol 30, beep
 python3 tools/say.py /dev/ttyACM0 "Hello, I'm aibot."
+```
+
+#### M4 — Audio input
+
+The robot records from an INMP441 I2S microphone and streams the audio to the PC over the serial link, where `tools/record.py` saves it as a WAV file. Speech recognition happens on the PC in M6; M4 only has to deliver clean audio.
+
+**Wiring** (I2S; pins configurable in menuconfig → *aibot audio*):
+
+| INMP441 pin | Connect to | Notes |
+|---|---|---|
+| VDD | ESP32 3V3 | 3.3 V only |
+| GND | ESP32 GND | |
+| SCK | GPIO 15 | Bit clock. Keep the wire short (see the M3 bench findings) |
+| WS | GPIO 16 | Word select |
+| SD | GPIO 17 | Audio data |
+| L/R | GND | Mic sends on the left slot |
+
+GPIO 15–17 avoid every pin already in use (speaker 4–6, I2C 8–9, LCD 10–14 and 21, USB 19–20, PSRAM 35–37).
+
+**Design**
+
+- `microphone` driver in the `audio` component, on the second I2S controller so the mic and speaker run independently. The INMP441 sends 24-bit samples in 32-bit slots, so the mic channel uses 32-bit slots while the speaker keeps 16-bit.
+- A high-priority mic task reads 20 ms blocks (320 samples) at 16 kHz, removes DC drift and rumble with a high-pass filter at about 80 Hz, sends silence for the first 300 ms after boot while the mic starts up, applies a software gain (default +18 dB: the INMP441 is quiet at speaking distance), and converts to 16-bit with saturation. It tracks the peak level for telemetry.
+- SCK and WS use the weakest pin drive, as the speaker pins do since M3.
+- Commands: `mic on` / `mic off` start and stop streaming, `mic gain <0-40>` sets the gain in dB, `mic` alone shows the state.
+- While on, the robot sends one line per block: `{"type":"mic","seq":N,"data":"<base64>"}`. The sequence number lets the PC spot gaps. That is about 45 kB/s robot → PC, half the link; speech to the speaker uses the other direction, so both can run at once.
+- If sending falls behind and the I2S buffer overflows, the block is dropped and counted. Telemetry adds `mic_peak` (loudest sample since the last report, 0–1) and `mic_overruns`.
+- `tools/record.py`: records N seconds to a WAV file with a live level bar, then reports gaps, peak and average level, and clipping. Warns when everything is zero (mic not connected). Play a recording back through the robot with `say.py --wav`.
+- `robot_cli.py` hides `mic` data lines and shows the mic fields in telemetry.
+- Out of scope: echo. The mic will hear the robot's own speaker; M6 has to deal with that (for example by muting the mic while the robot talks).
+
+**Progress**
+
+- [x] Mic driver, mic task and `mic` commands
+- [x] Mic fields in telemetry; `robot_cli.py` hides mic data
+- [x] `tools/record.py`
+- [x] Before wiring: recording gives all zeros with no gaps and no overruns, also while speech plays (5 s of speech with the mic on: 280 blocks, 0 gaps, 0 overruns, 0 speaker dropouts)
+- [x] Wire the INMP441
+- [x] A voice recording plays back clearly; set the default gain (18 dB)
+- [x] Recording and playback at the same time work without gaps (5 s of speech with the mic on: 281 blocks, 0 gaps, 0 overruns, 0 speaker dropouts)
+
+**Bench findings (2026-10-28)**
+
+- At +24 dB, speech at about 30 cm clipped. +12 dB never clipped but played back quietly; +18 dB is the default, a little loud: loud speech close to the mic can still clip, and `record.py` warns when it does.
+- Every recording started pinned at full scale for about 50 ms: the INMP441 outputs junk while it starts up after the board resets. The firmware now sends silence for the first 300 ms after boot.
+- Low-frequency drift after startup was removed by raising the high-pass filter from about 13 Hz to about 80 Hz. The remaining background is about −43 dBFS at +12 dB gain, most likely room noise (PC fan); speech sits about 20 dB above it.
+
+**Checks to run after wiring**
+
+```bash
+cd firmware
+python3 tools/record.py /dev/ttyACM0 -s 5 -o hello.wav   # speak during the 5 s
+python3 tools/say.py /dev/ttyACM0 --wav hello.wav        # hear it back on the robot
 ```
 
 After M9, we implement autonomous behaviors.
