@@ -136,7 +136,7 @@ python3 tools/say.py /dev/ttyACM0 --wav hello.wav        # hear it back on the r
 | Command | Reply |
 |---|---|
 | `ping` | `{"type":"pong","uptime_ms":…}` |
-| `status` | one `telemetry` message immediately. Includes `fps` (animation rate), `drawn_fps` (frames actually redrawn), `frame_us` (draw time), `audio_ms` (audio queued) and `dropouts` (times audio ran dry mid-stream since boot) |
+| `status` | one `telemetry` message immediately. Includes `fps` (animation rate), `drawn_fps` (frames actually redrawn), `frame_us` (draw time), `audio_ms` (audio queued), `dropouts` (times audio ran dry mid-stream since boot), `mic_peak` (loudest mic sample since the last report, 0–1) and `mic_overruns` (mic blocks lost) |
 | `rate <ms>` | sets the telemetry period (100–60000 ms), replies `{"type":"ack","cmd":"rate","period_ms":…}` |
 | `reboot` | `{"type":"ack","cmd":"reboot"}`, then restarts |
 | `i2cscan` | `{"type":"i2cscan","found":[64,112]}`: decimal addresses (a PCA9685 shows as 64 = 0x40, plus 112 = 0x70 for its all-call address) |
@@ -152,9 +152,11 @@ python3 tools/say.py /dev/ttyACM0 --wav hello.wav        # hear it back on the r
 | `vol [0-100]` | sets or shows the speaker volume (%) |
 | `pcm <base64>` | queues up to 380 16-bit little-endian mono samples at 16 kHz. Replies `{"type":"pcm","buffered":…,"capacity":32768,"dropped":…}` so the sender can pace itself |
 | `pcm end` / `pcm stop` | marks the end of a stream / drops everything queued |
+| `mic [on\|off]` | shows the mic state, or starts/stops streaming it. Replies `{"type":"ack","cmd":"mic","on":…,"gain_db":…}`. While on, the robot also sends `{"type":"mic","seq":…,"data":…}` every 20 ms: 320 16-bit little-endian samples at 16 kHz, base64. A jump in `seq` means blocks were lost |
+| `mic gain <0-40>` | sets the mic gain in dB |
 | `lcdtest [image]` | test image: `pattern` (default: red top, green right, blue bottom, white ring), or solid `red`, `green`, `blue`, `white`, `black`. Pauses the face until the next face command |
 | `lcdcfg [setting 0\|1]` | shows or changes `invert`, `mirror_x`, `mirror_y`, `swap_rb` until reboot, then redraws the pattern |
 | `bright [0-100]` | sets or shows backlight brightness (%) |
 | anything else | `{"type":"error","msg":"unknown command","cmd":…}` |
 
-The robot sends `{"type":"boot","reset_reason":…,"idf":…,"pca9685":true|false,"lcd":true|false,"audio":true|false}` on startup and streams `telemetry` messages periodically.
+The robot sends `{"type":"boot","reset_reason":…,"idf":…,"pca9685":true|false,"lcd":true|false,"audio":true|false,"mic":true|false}` on startup and streams `telemetry` messages periodically.

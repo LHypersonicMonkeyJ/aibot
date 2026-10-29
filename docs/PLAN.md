@@ -217,7 +217,7 @@ This is the same fundamental separation used in larger robotic control systems.
 | M2 | LCD interface | Animated eyes and expressions | ✅ Done. Animated face (eyes and mouth) at 30 fps: blinks, idle glances, eased expression changes, test talking mouth; `expr`/`look`/`blink`/`eyes`/`talk` commands. 80 MHz SPI, 15 ms/frame |
 | M3 | Audio output | Play synthesized speech | ✅ Done. Speech from `say.py` plays cleanly through the MAX98357A and speaker, 0 dropouts; boot volume 50%. Lip sync timing still to check by eye |
 | M4 | Audio input | Record microphone audio | ✅ Done. INMP441 streams 16 kHz audio to the PC with no gaps, also while the robot speaks; `tools/record.py` saves it as WAV and voice plays back clearly. Gain 18 dB |
-| M5 | Python communication | Send commands and receive telemetry | 🟡 Serial protocol v0 and `firmware/tools/robot_cli.py` working; backend not started |
+| M5 | Python communication | Send commands and receive telemetry | ✅ Done. `backend/` package: `Robot` class with reply matching, telemetry, audio in and out; 14 tests on a fake robot; demo and a 60 s soak on the robot with 0 lost or wrong replies |
 | M6 | Initial AI integration | Hold a conversation with coordinated expressions | ⬜ Not started |
 | M7 | Servo control | Independently command three servos | 🟡 Firmware written and flashed; waiting on PCA9685 wiring to test with real servos |
 | M8 | Motion trajectories | Smooth, bounded servo movements | 🟡 Trajectory planner prototyped and tested in `sim/`; not yet ported to firmware |
@@ -227,7 +227,7 @@ This is the same fundamental separation used in larger robotic control systems.
 
 **Next steps**
 
-1. Start M5 (Python backend). While the robot talks, check the mouth moves in time with the voice (last open M3 item).
+1. Start M6 (initial AI integration). While the robot talks, check the mouth moves in time with the voice (last open M3 item).
 2. Decide on 240 MHz CPU, and on 16 MB flash (the chip reports 16 MB).
 3. For M7 later: wire the PCA9685 and servos (see `firmware/README.md`), check `i2cscan` finds the board, then command each servo.
 
@@ -381,6 +381,46 @@ GPIO 15–17 avoid every pin already in use (speaker 4–6, I2C 8–9, LCD 10–
 cd firmware
 python3 tools/record.py /dev/ttyACM0 -s 5 -o hello.wav   # speak during the 5 s
 python3 tools/say.py /dev/ttyACM0 --wav hello.wav        # hear it back on the robot
+```
+
+#### M5 — Python communication
+
+A reusable `backend/` package that owns the serial link, so M6 (conversation) and later milestones build on one tested interface instead of separate scripts. Threads, not asyncio, to match the existing tools; this can change when the link moves to Wi-Fi/WebSockets.
+
+**Design**
+
+- `backend/communication/serial_interface.py`: a `Robot` class.
+  - Opens the port, then pings until the robot answers (opening the port resets the board).
+  - Methods for the commands (`ping`, `status`, `expr`, `look`, `blink`, `eyes_auto`, `talk`, `beep`, `volume`, `mic_gain`, `servo`, `relax`, `rate`, `reboot`, …). Each sends one line and returns the reply as a dict. An `error` reply raises `RobotError`; no reply in time raises `RobotTimeout`.
+  - Reply matching: protocol v0 has no message IDs, but the robot answers in order, so pending commands are matched first-in, first-out. Each reply is also checked against its command: an `ack` names its `cmd`, and `pong`, `telemetry`, `i2cscan` and `pcm` belong to `ping`, `status`, `i2cscan` and `pcm`. A reply for a later command means earlier ones lost theirs, and they fail at once instead of waiting for a timeout. `status` replies with an ordinary telemetry message, so telemetry resolves a pending `status` only when it is next in line.
+  - A `boot` message (the robot rebooted) fails everything pending with `RobotReset` and is reported to listeners.
+  - Telemetry: the latest message in `robot.telemetry`, plus listeners.
+  - Audio out: `play(samples)` streams 16 kHz audio with the same flow control as `say.py` (about 0.75 s queued on the robot, at most 8 `pcm` lines in flight).
+  - Audio in: `mic_on(callback)` / `mic_off()`. The callback gets each 20 ms block; gaps in the sequence numbers are counted.
+  - Firmware log lines go to Python `logging`.
+- `backend/tests/`: a fake robot in Python that speaks protocol v0 (periodic telemetry, mic stream, a `pcm` buffer that drains in real time, reboots, dropped replies on request), so the tests run without hardware.
+- `backend/main.py`: demo and soak test on the real robot.
+- The tools in `firmware/tools/` stay as they are for now.
+
+**Progress**
+
+- [x] `Robot` class: connection, commands, reply matching, telemetry, logs
+- [x] Audio out (`play`) and in (`mic_on`): on the robot, a chime played with 0 samples dropped, and 3 s of mic gave 151 blocks with 0 gaps
+- [x] Fake robot and tests: 14 tests, stable over 10 runs
+- [x] Demo on the robot: face, eyes, beep and audio, with telemetry
+- [x] Soak test on the robot: 60 s, 3 threads, telemetry every 100 ms: 5459 commands (91/s), 0 wrong replies, 0 errors, 0 timeouts; latency median 33 ms, max 44 ms
+
+**Bench findings (2026-10-28)**
+
+- A `ping` round trip takes about 21 ms over USB serial, most of it the USB link rather than the firmware. Fine for commands; M6 should not wait for a reply between every audio chunk, which `play()` already avoids by keeping up to 8 in flight.
+
+**Checks**
+
+```bash
+pip install -r backend/requirements.txt
+python3 -m pytest backend/tests
+python3 -m backend.main /dev/ttyACM0            # demo
+python3 -m backend.main /dev/ttyACM0 --soak 60  # 60 s of rapid commands
 ```
 
 After M9, we implement autonomous behaviors.
